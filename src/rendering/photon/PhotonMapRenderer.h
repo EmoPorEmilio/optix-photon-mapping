@@ -4,10 +4,10 @@
 
 #include <GLFW/glfw3.h>
 #include <glad/glad.h>
-#include "WindowManager.h"
-#include "Camera.h"
+#include "../../ui/WindowManager.h"
+#include "../../scene/Camera.h"
 #include "Photon.h"
-#include "Scene.h"
+#include "../../scene/Scene.h"
 #include <vector>
 #include <sutil/vec_math.h>
 #include <cmath>

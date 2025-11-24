@@ -3,7 +3,7 @@
 #include "Scene.h"
 #include "Triangle.h" 
 #include "Sphere.h"
-#include "QuadLight.h"
+#include "../lighting/QuadLight.h"
 #include <optix_types.h> 
 
 Scene::Scene() {}

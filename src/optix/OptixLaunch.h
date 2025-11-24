@@ -6,7 +6,7 @@
 #include <stdexcept>
 
 #include "OptixParams.h" 
-#include "../Camera.h"   
+#include "../scene/Camera.h"   
 
 class OptixLaunch
 {

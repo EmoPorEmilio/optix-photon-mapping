@@ -4,9 +4,9 @@
 
 #include <optix.h>
 #include <sutil/vec_math.h>
-#include "../../QuadLight.h"
-#include "../../Photon.h"
-#include "../../Material.h"
+#include "../../lighting/QuadLight.h"
+#include "../../rendering/photon/Photon.h"
+#include "../../scene/Material.h"
 
 // Simple sphere geometry description for the photon pass.
 struct PhotonSphereData

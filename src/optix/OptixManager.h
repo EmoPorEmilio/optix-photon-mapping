@@ -17,9 +17,9 @@
 #include "OptixSBT.h"
 #include "OptixAccelerationStructuresBuilder.h"
 #include "OptixLaunch.h"
-#include "../Camera.h"
-#include "../Scene.h" 
-#include "../QuadLight.h"
+#include "../scene/Camera.h"
+#include "../scene/Scene.h" 
+#include "../lighting/QuadLight.h"
 
 #include <iostream>
 #include <fstream>

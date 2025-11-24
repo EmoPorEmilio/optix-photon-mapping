@@ -11,7 +11,7 @@ Write-Host ""
 # Step 1: Compile CUDA shaders (unless skipped)
 if (-not $SkipCuda) {
     Write-Host "Step 1: Compiling CUDA shaders..." -ForegroundColor Yellow
-    Push-Location "src\reorganise\cuda"
+    Push-Location "src\cuda"
     & ".\compile_cuda_files.ps1"
     Pop-Location
 
@@ -34,7 +34,8 @@ if (-not $SkipBuild) {
     }
 
     # MSBuild needs to be run from the project directory
-    & $MSBUILD_PATH "$PSScriptRoot\OptixPhotonMappingRayTracing.vcxproj" /p:Configuration=Debug /p:Platform=x64 /v:q
+    $projectRoot = Split-Path -Parent $PSScriptRoot
+    & $MSBUILD_PATH "$projectRoot\OptixPhotonMappingRayTracing.vcxproj" /p:Configuration=Debug /p:Platform=x64 /v:q
 
     if ($LASTEXITCODE -eq 0) {
         Write-Host "Solution build successful" -ForegroundColor Green

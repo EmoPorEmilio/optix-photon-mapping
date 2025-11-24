@@ -9,7 +9,7 @@
 #include "Object.h"
 #include "Triangle.h"
 #include "Sphere.h"
-#include "Light.h"
+#include "../lighting/Light.h"
 
 
 struct OptixVertex

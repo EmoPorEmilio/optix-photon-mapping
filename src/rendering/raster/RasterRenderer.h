@@ -2,9 +2,9 @@
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
-#include "WindowManager.h"
-#include "Camera.h"
-#include "Scene.h"
+#include "../../ui/WindowManager.h"
+#include "../../scene/Camera.h"
+#include "../../scene/Scene.h"
 #include <vector>
 #include <sutil/vec_math.h>
 

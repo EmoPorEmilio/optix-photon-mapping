@@ -4,7 +4,7 @@
 #include <sutil/Exception.h>
 #include <cuda_runtime.h>
 #include <vector>
-#include "../Scene.h" 
+#include "../scene/Scene.h" 
 
 
 

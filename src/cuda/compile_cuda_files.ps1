@@ -46,9 +46,9 @@ Write-Host "✓ OptiX SDK found" -ForegroundColor Green
 
 # File paths (resolve to absolute paths for reliability)
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
-$projectRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $scriptDir))
-$cuFile = Join-Path $projectRoot "src\reorganise\cuda\raytrace.cu"
-$photonCuFile = Join-Path $projectRoot "src\reorganise\cuda\photon_emission_combined.cu"
+$projectRoot = Split-Path -Parent (Split-Path -Parent $scriptDir)
+$cuFile = Join-Path $projectRoot "src\cuda\raytrace.cu"
+$photonCuFile = Join-Path $projectRoot "src\cuda\photon_emission_combined.cu"
 $outputFile = Join-Path $projectRoot "ptx\raytrace.optixir"
 $photonOutputFile = Join-Path $projectRoot "ptx\photon_emission.optixir"
 
@@ -63,9 +63,8 @@ $commonArgs = @(
     "-I$sdkPath",
     "-I$projectRoot",
     "-I$projectRoot\src",
-    "-I$projectRoot\src\reorganise",
-    "-I$projectRoot\src\reorganise\cuda",
-    "-I$projectRoot\src\reorganise\cuda\photon_emission",
+    "-I$projectRoot\src\cuda",
+    "-I$projectRoot\src\cuda\photon_emission",
     "--optix-ir",
     "-arch=sm_86",
     "-std=c++11",

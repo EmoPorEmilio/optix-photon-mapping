@@ -1,8 +1,8 @@
 #include "RasterRenderer.h"
-#include "Application.h"
-#include "Triangle.h"
-#include "Sphere.h"
-#include "QuadLight.h"
+#include "../../core/Application.h"
+#include "../../scene/Triangle.h"
+#include "../../scene/Sphere.h"
+#include "../../lighting/QuadLight.h"
 #include <iostream>
 #include <cmath>
 #include <vector>

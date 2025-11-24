@@ -112,39 +112,54 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
-    <ClCompile Include="src\reorganise\main.cpp" />
-    <ClCompile Include="src\reorganise\Application.cpp" />
-    <ClCompile Include="src\reorganise\Camera.cpp" />
-    <ClCompile Include="src\reorganise\InputCommandManager.cpp" />
-    <ClCompile Include="src\reorganise\QuadLight.cpp" />
-    <ClCompile Include="src\reorganise\PhotonMapper.cpp" />
-    <ClCompile Include="src\reorganise\Renderer.cpp" />
-    <ClCompile Include="src\reorganise\RasterRenderer.cpp" />
-    <ClCompile Include="src\reorganise\Scene.cpp" />
-    <ClCompile Include="src\reorganise\ConfigLoader.cpp" />
-    <ClCompile Include="src\reorganise\optix\OptixModule.cpp" />
-    <ClCompile Include="src\reorganise\optix\OptixContext.cpp" />
-    <ClCompile Include="src\reorganise\optix\OptixManager.cpp" />
-    <ClCompile Include="src\reorganise\optix\OptixLaunch.cpp" />
-    <ClCompile Include="src\reorganise\optix\OptixProgramGroups.cpp" />
+    <ClCompile Include="src\core\main.cpp" />
+    <ClCompile Include="src\core\Application.cpp" />
+    <ClCompile Include="src\core\ConfigLoader.cpp" />
+    <ClCompile Include="src\scene\Camera.cpp" />
+    <ClCompile Include="src\scene\Scene.cpp" />
+    <ClCompile Include="src\scene\ObjLoader.cpp" />
+    <ClCompile Include="src\lighting\QuadLight.cpp" />
+    <ClCompile Include="src\rendering\photon\PhotonMapper.cpp" />
+    <ClCompile Include="src\rendering\raster\RasterRenderer.cpp" />
+    <ClCompile Include="src\ui\InputCommandManager.cpp" />
+    <ClCompile Include="src\optix\OptixModule.cpp" />
+    <ClCompile Include="src\optix\OptixContext.cpp" />
+    <ClCompile Include="src\optix\OptixManager.cpp" />
+    <ClCompile Include="src\optix\OptixLaunch.cpp" />
+    <ClCompile Include="src\optix\OptixProgramGroups.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\optixPathTracer.h" />
     <ClInclude Include="src\whitted.h" />
     <ClInclude Include="src\helpers.h" />
     <ClInclude Include="src\random.h" />
-    <ClInclude Include="src\reorganise\Application.h" />
-    <ClInclude Include="src\reorganise\Renderer.h" />
-    <ClInclude Include="src\reorganise\RasterRenderer.h" />
-    <ClInclude Include="src\reorganise\InputCommandManager.h" />
-    <ClInclude Include="src\reorganise\OpenGLManager.h" />
-    <ClInclude Include="src\reorganise\WindowManager.h" />
-    <ClInclude Include="src\reorganise\Ray.h" />
-    <ClInclude Include="src\reorganise\Camera.h" />
-    <ClInclude Include="src\reorganise\HitRecord.h" />
-    <ClInclude Include="src\reorganise\Object.h" />
-    <ClInclude Include="src\reorganise\Sphere.h" />
-    <ClInclude Include="src\reorganise\Scene.h" />
+    <ClInclude Include="src\core\Application.h" />
+    <ClInclude Include="src\core\ConfigLoader.h" />
+    <ClInclude Include="src\scene\Camera.h" />
+    <ClInclude Include="src\scene\Scene.h" />
+    <ClInclude Include="src\scene\Object.h" />
+    <ClInclude Include="src\scene\Sphere.h" />
+    <ClInclude Include="src\scene\Triangle.h" />
+    <ClInclude Include="src\scene\Material.h" />
+    <ClInclude Include="src\scene\ObjLoader.h" />
+    <ClInclude Include="src\lighting\Light.h" />
+    <ClInclude Include="src\lighting\QuadLight.h" />
+    <ClInclude Include="src\rendering\photon\Photon.h" />
+    <ClInclude Include="src\rendering\photon\PhotonMapper.h" />
+    <ClInclude Include="src\rendering\photon\PhotonMapRenderer.h" />
+    <ClInclude Include="src\rendering\raster\RasterRenderer.h" />
+    <ClInclude Include="src\ui\InputCommandManager.h" />
+    <ClInclude Include="src\ui\OpenGLManager.h" />
+    <ClInclude Include="src\ui\WindowManager.h" />
+    <ClInclude Include="src\optix\OptixManager.h" />
+    <ClInclude Include="src\optix\OptixContext.h" />
+    <ClInclude Include="src\optix\OptixModule.h" />
+    <ClInclude Include="src\optix\OptixPipeline.h" />
+    <ClInclude Include="src\optix\OptixProgramGroups.h" />
+    <ClInclude Include="src\optix\OptixSBT.h" />
+    <ClInclude Include="src\optix\OptixAccelerationStructuresBuilder.h" />
+    <ClInclude Include="src\optix\OptixLaunch.h" />
+    <ClInclude Include="src\optix\OptixParams.h" />
     <ClInclude Include="sampleConfig.h" />
   </ItemGroup>
   <ItemGroup>

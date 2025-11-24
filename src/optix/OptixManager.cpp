@@ -1,7 +1,7 @@
 #include "OptixManager.h"
 #include <optix_function_table_definition.h>
 #include <sutil/Exception.h>
-#include "../Material.h"
+#include "../scene/Material.h"
 #include "../cuda/photon_emission/photon_launch_params.h"
 
 bool OptixManager::initialize()
