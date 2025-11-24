@@ -1,4 +1,5 @@
 #include "RasterRenderer.h"
+#include "Application.h"
 #include "Triangle.h"
 #include "Sphere.h"
 #include "QuadLight.h"
@@ -20,6 +21,8 @@ RasterRenderer::~RasterRenderer()
     if (shaderProgram) glDeleteProgram(shaderProgram);
     if (VAO) glDeleteVertexArrays(1, &VAO);
     if (VBO) glDeleteBuffers(1, &VBO);
+    if (photonVAO) glDeleteVertexArrays(1, &photonVAO);
+    if (photonVBO) glDeleteBuffers(1, &photonVBO);
 }
 
 void RasterRenderer::setCamera(Camera *cam)
@@ -31,6 +34,11 @@ void RasterRenderer::setScene(Scene *s)
 {
     scene = s;
     buildSceneGeometry();
+}
+
+void RasterRenderer::setAnimatedPhotons(const std::vector<AnimatedPhoton>& p)
+{
+    photons = p;
 }
 
 void RasterRenderer::createShaderProgram()
@@ -184,6 +192,87 @@ void RasterRenderer::buildSceneGeometry()
     glBindVertexArray(0);
 }
 
+void RasterRenderer::renderPhotons()
+{
+    if (photons.empty())
+        return;
+
+    // Generate sphere geometry for each photon
+    std::vector<float> photonBufferData; // x, y, z, r, g, b
+    const float photonRadius = 8.0f; // Visible yellow sphere
+    const float3 photonColor = make_float3(1.0f, 1.0f, 0.0f); // Yellow
+    const int stacks = 10;
+    const int slices = 10;
+
+    auto addTriangle = [&](const float3& v0, const float3& v1, const float3& v2, const float3& color) {
+        photonBufferData.push_back(v0.x); photonBufferData.push_back(v0.y); photonBufferData.push_back(v0.z);
+        photonBufferData.push_back(color.x); photonBufferData.push_back(color.y); photonBufferData.push_back(color.z);
+
+        photonBufferData.push_back(v1.x); photonBufferData.push_back(v1.y); photonBufferData.push_back(v1.z);
+        photonBufferData.push_back(color.x); photonBufferData.push_back(color.y); photonBufferData.push_back(color.z);
+
+        photonBufferData.push_back(v2.x); photonBufferData.push_back(v2.y); photonBufferData.push_back(v2.z);
+        photonBufferData.push_back(color.x); photonBufferData.push_back(color.y); photonBufferData.push_back(color.z);
+    };
+
+    for (const auto& photon : photons)
+    {
+        float3 center = photon.position;
+        float radius = photonRadius;
+
+        for (int i = 0; i < stacks; ++i)
+        {
+            float phi1 = M_PI * float(i) / float(stacks);
+            float phi2 = M_PI * float(i + 1) / float(stacks);
+
+            for (int j = 0; j < slices; ++j)
+            {
+                float theta1 = 2.0f * M_PI * float(j) / float(slices);
+                float theta2 = 2.0f * M_PI * float(j + 1) / float(slices);
+
+                auto getPos = [&](float phi, float theta) {
+                    return make_float3(
+                        center.x + radius * sin(phi) * cos(theta),
+                        center.y + radius * cos(phi),
+                        center.z + radius * sin(phi) * sin(theta)
+                    );
+                };
+
+                float3 p1 = getPos(phi1, theta1);
+                float3 p2 = getPos(phi2, theta1);
+                float3 p3 = getPos(phi2, theta2);
+                float3 p4 = getPos(phi1, theta2);
+
+                addTriangle(p1, p2, p3, photonColor);
+                addTriangle(p1, p3, p4, photonColor);
+            }
+        }
+    }
+
+    if (photonBufferData.empty())
+        return;
+
+    if (photonVAO == 0) glGenVertexArrays(1, &photonVAO);
+    if (photonVBO == 0) glGenBuffers(1, &photonVBO);
+
+    glBindVertexArray(photonVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, photonVBO);
+    glBufferData(GL_ARRAY_BUFFER, photonBufferData.size() * sizeof(float), photonBufferData.data(), GL_DYNAMIC_DRAW);
+
+    // Position
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    // Color
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    int photonVertexCount = photonBufferData.size() / 6;
+    glDrawArrays(GL_TRIANGLES, 0, photonVertexCount);
+
+    glBindVertexArray(0);
+}
+
 void RasterRenderer::renderFrame()
 {
     if (!window || !camera || !scene) return;
@@ -290,6 +379,9 @@ void RasterRenderer::renderFrame()
     glBindVertexArray(VAO);
     glDrawArrays(GL_TRIANGLES, 0, vertexCount);
     glBindVertexArray(0);
+
+    // Render animated photons
+    renderPhotons();
 
     glDisable(GL_SCISSOR_TEST);
 }

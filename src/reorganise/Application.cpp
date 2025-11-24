@@ -8,8 +8,15 @@
 #include "ConfigLoader.h"
 #include "RasterRenderer.h"
 #include <optix_types.h>
+#include <random>
+#include <cmath>
 
 static unsigned int NUM_PHOTONS = 100000;
+
+// Random number generator for photon emission
+static std::random_device rd;
+static std::mt19937 gen(rd());
+static std::uniform_real_distribution<float> dis(0.0f, 1.0f);
 
 bool Application::initialize()
 {
@@ -18,6 +25,10 @@ bool Application::initialize()
     // reference the config relative to that (bin/Debug/...).
     PhotonMappingConfig pmc = ConfigLoader::load("bin/Debug/configuration.json");
     NUM_PHOTONS = pmc.max_photons;
+    maxPhotons = pmc.max_photons;
+    
+    // Initialize photon emission timer
+    lastPhotonEmissionTime = std::chrono::steady_clock::now();
 
     inputCommandManager = std::make_unique<InputCommandManager>();
     photonMapper = std::make_unique<PhotonMapper>(NUM_PHOTONS);
@@ -264,9 +275,30 @@ void Application::run()
     std::cout << "About to enter while loop" << std::endl;
     std::cout.flush();
 
+    auto lastFrameTime = std::chrono::steady_clock::now();
+
     while (isRunning && !glManager.shouldClose())
     {
+        // Calculate delta time
+        auto currentTime = std::chrono::steady_clock::now();
+        float deltaTime = std::chrono::duration<float>(currentTime - lastFrameTime).count();
+        lastFrameTime = currentTime;
+
         inputCommandManager->pollEvents();
+
+        // Emit photon every second
+        auto timeSinceLastEmission = std::chrono::duration<float>(currentTime - lastPhotonEmissionTime).count();
+        if (timeSinceLastEmission >= 1.0f && animatedPhotons.size() < maxPhotons)
+        {
+            emitPhoton();
+            lastPhotonEmissionTime = currentTime;
+        }
+
+        // Update photon positions
+        updatePhotons(deltaTime);
+
+        // Pass photons to renderer
+        leftRenderer->setAnimatedPhotons(animatedPhotons);
 
         try
         {
@@ -338,4 +370,114 @@ void Application::run()
 void Application::shutdown()
 {
     isRunning = false;
+}
+
+void Application::emitPhoton()
+{
+    if (animatedPhotons.size() >= maxPhotons)
+        return;
+    
+    const auto& lights = scene.getLights();
+    if (lights.empty() || !lights[0]->isAreaLight())
+        return;
+    
+    const QuadLight* quadLight = static_cast<const QuadLight*>(lights[0].get());
+    
+    AnimatedPhoton photon;
+    
+    // Generate random samples for position and direction
+    float u_pos = dis(gen);
+    float v_pos = dis(gen);
+    float u_dir_1 = dis(gen);
+    float u_dir_2 = dis(gen);
+    
+    // Sample photon emission from quad light
+    quadLight->samplePhotonEmission(u_pos, v_pos, u_dir_1, u_dir_2, 
+                                    photon.position, photon.direction);
+    
+    // Set velocity based on direction and speed
+    photon.velocity = photon.direction * photonSpeed;
+    photon.isActive = true;
+    
+    animatedPhotons.push_back(photon);
+    
+    std::cout << "Emitted photon #" << animatedPhotons.size() 
+              << " at (" << photon.position.x << ", " << photon.position.y << ", " << photon.position.z << ")"
+              << " direction (" << photon.direction.x << ", " << photon.direction.y << ", " << photon.direction.z << ")" << std::endl;
+}
+
+void Application::updatePhotons(float deltaTime)
+{
+    static int frameCount = 0;
+    bool shouldPrint = (frameCount++ % 60 == 0); // Print every 60 frames
+    
+    for (size_t i = 0; i < animatedPhotons.size(); i++)
+    {
+        auto& photon = animatedPhotons[i];
+        if (!photon.isActive)
+            continue;
+        
+        // Update position based on velocity
+        float3 oldPos = photon.position;
+        photon.position = photon.position + photon.velocity * deltaTime;
+        
+        if (shouldPrint && i == 0) // Print first active photon
+        {
+            std::cout << "Photon #1: pos(" << photon.position.x << ", " << photon.position.y 
+                      << ", " << photon.position.z << ") vel_length=" << length(photon.velocity) << std::endl;
+        }
+        
+        // Check for collision with scene geometry
+        if (checkCollision(photon.position))
+        {
+            // Stop the photon
+            photon.velocity = make_float3(0.0f, 0.0f, 0.0f);
+            photon.isActive = false;
+            std::cout << "Photon #" << (i+1) << " collided at (" 
+                      << photon.position.x << ", " << photon.position.y << ", " << photon.position.z << ")" << std::endl;
+        }
+    }
+}
+
+bool Application::checkCollision(const float3& position)
+{
+    const float epsilon = photonCollisionRadius;
+    
+    // Check collision with Cornell Box walls
+    // Floor (y = 0)
+    if (position.y <= epsilon)
+        return true;
+    
+    // Don't check ceiling - photons start there from the light
+    
+    // Left wall (x = 0)
+    if (position.x <= epsilon)
+        return true;
+    
+    // Right wall (x = 556)
+    if (position.x >= 556.0f - epsilon)
+        return true;
+    
+    // Front wall (z = 0)
+    if (position.z <= epsilon)
+        return true;
+    
+    // Back wall (z = 559.2)
+    if (position.z >= 559.2f - epsilon)
+        return true;
+    
+    // Check collision with scene objects
+    for (const auto& obj : scene.getObjects())
+    {
+        if (auto sphere = dynamic_cast<Sphere*>(obj.get()))
+        {
+            float3 center = sphere->getCenter();
+            float radius = sphere->getRadius();
+            float dist = length(position - center);
+            if (dist <= radius + epsilon)
+                return true;
+        }
+    }
+    
+    return false;
 }

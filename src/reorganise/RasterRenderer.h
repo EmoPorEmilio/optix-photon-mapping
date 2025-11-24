@@ -8,6 +8,8 @@
 #include <vector>
 #include <sutil/vec_math.h>
 
+struct AnimatedPhoton; // Forward declaration
+
 class RasterRenderer
 {
 private:
@@ -21,8 +23,14 @@ private:
     unsigned int VBO = 0;
     unsigned int vertexCount = 0;
 
+    // Photon rendering
+    unsigned int photonVAO = 0;
+    unsigned int photonVBO = 0;
+    std::vector<AnimatedPhoton> photons;
+
     void createShaderProgram();
     void buildSceneGeometry();
+    void renderPhotons();
 
 public:
     RasterRenderer(Window *w, const ViewportRect &vp);
@@ -30,6 +38,7 @@ public:
 
     void setCamera(Camera *cam);
     void setScene(Scene *s);
+    void setAnimatedPhotons(const std::vector<AnimatedPhoton>& p);
     
     void renderFrame();
 };
