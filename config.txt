@@ -1,0 +1,19 @@
+[Weights]
+direct_weight = 1.0
+indirect_weight = 0.1
+caustics_weight = 3.0
+specular_weight = 1.0
+
+[PhotonMap]
+total_photons = 1000
+
+# Indirect lighting photon search parameters
+indirect_k_photons = 300
+indirect_max_radius = 150.0
+
+# Caustics photon map search parameters
+caustics_k_photons = 100
+caustics_max_radius = 30.0
+
+# Cone filter constant
+cone_filter_k = 2.0

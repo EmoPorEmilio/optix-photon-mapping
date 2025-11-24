@@ -1,0 +1,76 @@
+# Visual Studio / MSBuild artifacts (user-specific files only)
+*.vcxproj.user
+*.user
+.vs/
+*.suo
+*.opensdf
+*.sdf
+
+# Keep project files for root standalone project
+!optixPathTracer.vcxproj
+!optixPathTracer.vcxproj.filters
+!optixPathTracer.sln
+
+# CMake build artifacts (but keep CMakeLists.txt files)
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+
+# Build directories
+bin/
+lib/
+x64/
+obj/
+Debug/
+Release/
+build/
+
+# OptiX sample project specific ignores (CMake artifacts only)
+sample-projects-solution-working/CMakeCache.txt
+sample-projects-solution-working/CMakeFiles/
+sample-projects-solution-working/cmake_install.cmake
+sample-projects-solution-working/bin/
+sample-projects-solution-working/lib/
+sample-projects-solution-working/x64/
+sample-projects-solution-working/.vs/
+
+# Generated header files that might be build artifacts
+sample-projects-solution-working/sampleConfig.h
+
+# Compiler and linker output
+*.obj
+*.lib
+*.exe
+*.dll
+*.pdb
+*.ilk
+*.exp
+
+# CUDA compilation artifacts
+*.ptx
+*.cubin
+*.fatbin
+
+# Keep the ptx directory but ignore optixir files (they're build artifacts)
+!ptx/
+ptx/*.optixir
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+
+# OS specific
+Thumbs.db
+.DS_Store
+*.swp
+*.swo
+*~
+
+# IDE specific
+.vscode/
+.idea/
+
+# Package managers
+vcpkg_installed/

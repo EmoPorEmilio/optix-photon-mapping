@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <PreferredToolArchitecture>x64</PreferredToolArchitecture>
+  </PropertyGroup>
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{F1A2B3C4-D5E6-7890-ABCD-EF1234567890}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <Platform>x64</Platform>
+    <ProjectName>OptixPhotonMappingRayTracing</ProjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.20506.1</_ProjectFileVersion>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(SolutionDir)bin\$(Configuration)\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(SolutionDir)obj\$(Configuration)\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">OptixPhotonMappingRayTracing</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.exe</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</LinkIncremental>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(SolutionDir)bin\$(Configuration)\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(SolutionDir)obj\$(Configuration)\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">OptixPhotonMappingRayTracing</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.exe</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkIncremental>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.0.0\include;C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.0.0\SDK\cuda;C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.0.0\SDK;$(SolutionDir);C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.0\include;C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.0.0\SDK\support\imgui\..;C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.0.0\SDK\support\glfw-3.4\include;C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.0.0\SDK\support\.;C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.0.0\SDK\sutil;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /w34101 /w34189 /w34018 /w34389</AdditionalOptions>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <DisableSpecificWarnings>4355;4996;4800</DisableSpecificWarnings>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <Optimization>Disabled</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <WarningLevel>Level3</WarningLevel>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;OPTIX_SAMPLE_NAME_DEFINE=optixPathTracer;OPTIX_SAMPLE_DIR_DEFINE=optixPathTracer;_USE_MATH_DEFINES;NOMINMAX;IMGUI_API=__declspec(dllimport);GLFW_DLL;GLAD_GLAPI_EXPORT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>C:\Users\emili\Desktop\proyectos\optix_samples_build\lib\Debug\sutil_7_sdk.lib;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.0\lib\x64\cudart_static.lib;C:\Users\emili\Desktop\proyectos\optix_samples_build\lib\Debug\imgui.lib;C:\Users\emili\Desktop\proyectos\optix_samples_build\lib\Debug\glfw3dll.lib;C:\Users\emili\Desktop\proyectos\optix_samples_build\lib\Debug\glad.lib;opengl32.lib;glu32.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <PostBuildEvent>
+      <Command>xcopy /Y /D "C:\Users\emili\Desktop\proyectos\optix_samples_build\bin\Debug\*.dll" "$(OutDir)"</Command>
+      <Message>Copying DLL dependencies to output directory</Message>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.0.0\include;C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.0.0\SDK\cuda;C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.0.0\SDK;$(SolutionDir);C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.0\include;C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.0.0\SDK\support\imgui\..;C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.0.0\SDK\support\glfw-3.4\include;C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.0.0\SDK\support\.;C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.0.0\SDK\sutil;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /w34101 /w34189 /w34018 /w34389</AdditionalOptions>
+      <DisableSpecificWarnings>4355;4996;4800</DisableSpecificWarnings>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <FloatingPointModel>Fast</FloatingPointModel>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <Optimization>Full</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <WarningLevel>Level3</WarningLevel>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;OPTIX_SAMPLE_NAME_DEFINE=optixPathTracer;OPTIX_SAMPLE_DIR_DEFINE=optixPathTracer;_USE_MATH_DEFINES;NOMINMAX;IMGUI_API=__declspec(dllimport);GLFW_DLL;GLAD_GLAPI_EXPORT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>C:\Users\emili\Desktop\proyectos\optix_samples_build\lib\Release\sutil_7_sdk.lib;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.0\lib\x64\cudart_static.lib;C:\Users\emili\Desktop\proyectos\optix_samples_build\lib\Release\imgui.lib;C:\Users\emili\Desktop\proyectos\optix_samples_build\lib\Release\glfw3dll.lib;C:\Users\emili\Desktop\proyectos\optix_samples_build\lib\Release\glad.lib;opengl32.lib;glu32.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <PostBuildEvent>
+      <Command>xcopy /Y /D "C:\Users\emili\Desktop\proyectos\optix_samples_build\bin\Release\*.dll" "$(OutDir)"</Command>
+      <Message>Copying DLL dependencies to output directory</Message>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="src\optixPathTracer.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="src\reorganise\main.cpp" />
+    <ClCompile Include="src\reorganise\Application.cpp" />
+    <ClCompile Include="src\reorganise\Camera.cpp" />
+    <ClCompile Include="src\reorganise\InputCommandManager.cpp" />
+    <ClCompile Include="src\reorganise\QuadLight.cpp" />
+    <ClCompile Include="src\reorganise\PhotonMapper.cpp" />
+    <ClCompile Include="src\reorganise\Renderer.cpp" />
+    <ClCompile Include="src\reorganise\RasterRenderer.cpp" />
+    <ClCompile Include="src\reorganise\Scene.cpp" />
+    <ClCompile Include="src\reorganise\ConfigLoader.cpp" />
+    <ClCompile Include="src\reorganise\optix\OptixModule.cpp" />
+    <ClCompile Include="src\reorganise\optix\OptixContext.cpp" />
+    <ClCompile Include="src\reorganise\optix\OptixManager.cpp" />
+    <ClCompile Include="src\reorganise\optix\OptixLaunch.cpp" />
+    <ClCompile Include="src\reorganise\optix\OptixProgramGroups.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\optixPathTracer.h" />
+    <ClInclude Include="src\whitted.h" />
+    <ClInclude Include="src\helpers.h" />
+    <ClInclude Include="src\random.h" />
+    <ClInclude Include="src\reorganise\Application.h" />
+    <ClInclude Include="src\reorganise\Renderer.h" />
+    <ClInclude Include="src\reorganise\RasterRenderer.h" />
+    <ClInclude Include="src\reorganise\InputCommandManager.h" />
+    <ClInclude Include="src\reorganise\OpenGLManager.h" />
+    <ClInclude Include="src\reorganise\WindowManager.h" />
+    <ClInclude Include="src\reorganise\Ray.h" />
+    <ClInclude Include="src\reorganise\Camera.h" />
+    <ClInclude Include="src\reorganise\HitRecord.h" />
+    <ClInclude Include="src\reorganise\Object.h" />
+    <ClInclude Include="src\reorganise\Sphere.h" />
+    <ClInclude Include="src\reorganise\Scene.h" />
+    <ClInclude Include="sampleConfig.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="src\whitted.cu">
+      <FileType>Document</FileType>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="ptx\optixPathTracer.optixir">
+      <FileType>Document</FileType>
+    </None>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
