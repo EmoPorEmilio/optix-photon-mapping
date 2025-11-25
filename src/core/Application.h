@@ -9,27 +9,19 @@
 #include "../scene/Sphere.h"
 #include "../scene/Triangle.h"
 #include "ConfigLoader.h"
+#include "Constants.h"
+#include "CollisionDetector.h"
 #include "../scene/ObjLoader.h"
 #include "../rendering/photon/PhotonMapper.h"
 #include "../rendering/photon/PhotonMapRenderer.h"
+#include "../rendering/photon/AnimatedPhoton.h"
+#include "../rendering/photon/Photon.h"
 #include "../optix/OptixManager.h"
 #include <iostream>
 #include <memory>
 #include <vector>
 #include <chrono>
-
-struct AnimatedPhoton
-{
-    float3 position;
-    float3 direction;
-    float3 velocity;
-    bool isActive;
-    
-    AnimatedPhoton() : position(make_float3(0.0f, 0.0f, 0.0f)),
-                       direction(make_float3(0.0f, 0.0f, 0.0f)),
-                       velocity(make_float3(0.0f, 0.0f, 0.0f)),
-                       isActive(true) {}
-};
+#include <random>
 
 class Application
 {
@@ -42,19 +34,40 @@ private:
     Scene scene;
     OptixManager optixManager;
     std::unique_ptr<PhotonMapper> photonMapper;
+    std::unique_ptr<CollisionDetector> collisionDetector;
     bool isRunning = false;
     bool photonsEmitted = false;
+
+    // Animation mode settings
+    bool animatedMode = true;      // If false, instant photon tracing
+    float photonSpeed = 200.0f;    // units per second (animated mode)
+    float emissionInterval = 0.5f; // seconds between emissions (animated mode)
 
     // CPU Photon Animation
     std::vector<AnimatedPhoton> animatedPhotons;
     unsigned int maxPhotons = 10;
     std::chrono::steady_clock::time_point lastPhotonEmissionTime;
-    float photonSpeed = 80.0f; // units per second - speed of photon movement
-    float photonCollisionRadius = 10.0f; // collision detection radius
+    float photonCollisionRadius = 1.0f;
 
+    // Photon Map Storage (stores photons after first diffuse bounce)
+    std::vector<Photon> photonMap;
+
+    // Random number generator for Russian Roulette and bounce directions
+    std::mt19937 rng;
+    std::uniform_real_distribution<float> uniformDist;
+
+    // Animated mode: emit one photon
     void emitPhoton();
+    // Animated mode: update photon positions with physics
     void updatePhotons(float deltaTime);
-    bool checkCollision(const float3& position);
+
+    // Instant mode: emit all photons and trace them immediately
+    void emitAllPhotonsInstant();
+    // Trace a single photon to completion (all bounces)
+    void tracePhotonToCompletion(AnimatedPhoton &photon);
+
+    // Generate a cosine-weighted random direction in hemisphere around normal
+    float3 sampleCosineHemisphere(const float3 &normal);
 
     enum RenderMode
     {
@@ -64,13 +77,14 @@ private:
     RenderMode currentMode = MODE_PHOTON_DOTS;
 
 public:
-    Application() = default;
+    Application();
     ~Application() = default;
 
     bool initialize();
     void run();
     void shutdown();
+
+    // Access to photon map for debugging/visualization
+    const std::vector<Photon> &getPhotonMap() const { return photonMap; }
+    size_t getPhotonMapSize() const { return photonMap.size(); }
 };
-
-
-

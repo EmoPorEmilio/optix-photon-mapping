@@ -5,10 +5,9 @@
 #include "../../ui/WindowManager.h"
 #include "../../scene/Camera.h"
 #include "../../scene/Scene.h"
+#include "../photon/AnimatedPhoton.h"
 #include <vector>
 #include <sutil/vec_math.h>
-
-struct AnimatedPhoton; // Forward declaration
 
 class RasterRenderer
 {
@@ -38,7 +37,7 @@ public:
 
     void setCamera(Camera *cam);
     void setScene(Scene *s);
-    void setAnimatedPhotons(const std::vector<AnimatedPhoton>& p);
-    
+    void setAnimatedPhotons(const std::vector<AnimatedPhoton> &p);
+
     void renderFrame();
 };

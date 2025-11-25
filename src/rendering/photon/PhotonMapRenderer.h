@@ -40,19 +40,16 @@ private:
     std::vector<DebugTri> debugTriangles;
     std::vector<DebugSphere> debugSpheres;
 
-    
-    std::vector<unsigned char> pixelBuffer; 
+    std::vector<unsigned char> pixelBuffer;
     unsigned int textureID = 0;
     unsigned int textureWidth = 0;
     unsigned int textureHeight = 0;
 
-    
     unsigned int quadVAO = 0;
     unsigned int quadVBO = 0;
     unsigned int quadEBO = 0;
     unsigned int shaderProgram = 0;
 
-    
     unsigned int compileShader(const char *source, unsigned int type)
     {
         unsigned int shader = glCreateShader(type);
@@ -71,7 +68,6 @@ private:
         return shader;
     }
 
-    
     void createShaderProgram()
     {
         const char *vertexShaderSource = R"(
@@ -122,27 +118,28 @@ public:
     PhotonMapRenderer() = default;
     ~PhotonMapRenderer()
     {
-        if (quadVAO) glDeleteVertexArrays(1, &quadVAO);
-        if (quadVBO) glDeleteBuffers(1, &quadVBO);
-        if (quadEBO) glDeleteBuffers(1, &quadEBO);
-        if (textureID) glDeleteTextures(1, &textureID);
-        if (shaderProgram) glDeleteProgram(shaderProgram);
+        if (quadVAO)
+            glDeleteVertexArrays(1, &quadVAO);
+        if (quadVBO)
+            glDeleteBuffers(1, &quadVBO);
+        if (quadEBO)
+            glDeleteBuffers(1, &quadEBO);
+        if (textureID)
+            glDeleteTextures(1, &textureID);
+        if (shaderProgram)
+            glDeleteProgram(shaderProgram);
     }
 
-    
     bool initialize(Window *win)
     {
         window = win;
         if (!window)
             return false;
 
-        
         window->makeCurrent();
 
-        
         createShaderProgram();
 
-        
         glGenTextures(1, &textureID);
         glBindTexture(GL_TEXTURE_2D, textureID);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -150,15 +147,13 @@ public:
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-        
         float quadVertices[] = {
-            
+
             -1.0f, -1.0f, 0.0f, 0.0f,
-             1.0f, -1.0f, 1.0f, 0.0f,
-             1.0f,  1.0f, 1.0f, 1.0f,
-            -1.0f,  1.0f, 0.0f, 1.0f
-        };
-        unsigned int indices[] = { 0, 1, 2, 2, 3, 0 };
+            1.0f, -1.0f, 1.0f, 0.0f,
+            1.0f, 1.0f, 1.0f, 1.0f,
+            -1.0f, 1.0f, 0.0f, 1.0f};
+        unsigned int indices[] = {0, 1, 2, 2, 3, 0};
 
         glGenVertexArrays(1, &quadVAO);
         glGenBuffers(1, &quadVBO);
@@ -169,9 +164,9 @@ public:
         glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, quadEBO);
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)0);
         glEnableVertexAttribArray(0);
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)(2 * sizeof(float)));
         glEnableVertexAttribArray(1);
         glBindVertexArray(0);
 
@@ -212,7 +207,6 @@ public:
         }
     }
 
-    
     void uploadFromHost(const Photon *photons, size_t count)
     {
         if (!window || count == 0 || count > 1000000)
@@ -231,16 +225,15 @@ public:
         currentPhotonCount = count;
     }
 
-    
     void render()
     {
-        if (!window || !viewport || currentPhotonCount == 0)
+        if (!window || !viewport)
             return;
 
-        
         static int frameCount = 0;
-        if (frameCount++ % 60 == 0) { 
-            std::cout << "PhotonMapRenderer: rendering " << currentPhotonCount << " points" << std::endl;
+        if (frameCount++ % 60 == 0 && currentPhotonCount > 0)
+        {
+            std::cout << "PhotonMapRenderer: rendering " << currentPhotonCount << " photons" << std::endl;
         }
 
         window->makeCurrent();
@@ -252,7 +245,13 @@ public:
         glClearColor(0.02f, 0.02f, 0.02f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        
+        // If no photons yet, just show cleared screen
+        if (currentPhotonCount == 0)
+        {
+            glDisable(GL_SCISSOR_TEST);
+            return;
+        }
+
         if (textureWidth != (unsigned int)viewport->width || textureHeight != (unsigned int)viewport->height)
         {
             textureWidth = viewport->width;
@@ -266,40 +265,33 @@ public:
             std::fill(pixelBuffer.begin(), pixelBuffer.end(), 0);
         }
 
-        
         float3 eye = camera->getPosition();
         float3 lookAt = camera->getLookAt();
 
-        
-        float3 w = normalize(lookAt - eye);  
-        float3 u_basis = normalize(make_float3(w.z, 0.0f, -w.x));  
-        float3 v_basis = normalize(cross(w, u_basis));  
+        float3 w = normalize(lookAt - eye);
+        float3 u_basis = normalize(make_float3(w.z, 0.0f, -w.x));
+        float3 v_basis = normalize(cross(w, u_basis));
 
-        
         float3 f = w;
         float3 s = u_basis;
         float3 u = v_basis;
 
-        
-        
         float3 U_exact = camera->getU();
         float3 V_exact = camera->getV();
         float3 W_exact = camera->getW();
 
-        
         float wlen = length(camera->getLookAt() - eye);
-        float vlen = length(V_exact);  
-        float ulen = length(U_exact);  
-        
+        float vlen = length(V_exact);
+        float ulen = length(U_exact);
 
-        
         for (size_t i = 0; i < currentPhotonCount; ++i)
         {
             float3 p = photonPositions[i];
-            float3 d = p - eye; 
-            
-            float dw = dot(d, f); 
-            if (dw <= 0.0f) continue; 
+            float3 d = p - eye;
+
+            float dw = dot(d, f);
+            if (dw <= 0.0f)
+                continue;
 
             // Optional occlusion test: if the ray from eye to photon hits any scene
             // object before reaching the photon, we skip drawing it.
@@ -320,12 +312,14 @@ public:
                         float b = 2.0f * dot(oc, dir);
                         float c = dot(oc, oc) - sph.radius * sph.radius;
                         float disc = b * b - 4.0f * a * c;
-                        if (disc < 0.0f) continue;
+                        if (disc < 0.0f)
+                            continue;
                         float sqrtd = sqrtf(disc);
                         float t1 = (-b - sqrtd) / (2.0f * a);
                         float t2 = (-b + sqrtd) / (2.0f * a);
                         float tHit = t1;
-                        if (tHit < eps) tHit = t2;
+                        if (tHit < eps)
+                            tHit = t2;
                         if (tHit > eps && tHit < closest)
                         {
                             closest = tHit;
@@ -340,43 +334,49 @@ public:
                 }
             }
 
-            float a = dot(d, U_exact) / (ulen * ulen);  
-            float b = dot(d, V_exact) / (vlen * vlen);  
-            float c = dot(d, W_exact) / (wlen * wlen);  
-            if (c <= 0.0f) continue;
+            float a = dot(d, U_exact) / (ulen * ulen);
+            float b = dot(d, V_exact) / (vlen * vlen);
+            float c = dot(d, W_exact) / (wlen * wlen);
+            if (c <= 0.0f)
+                continue;
 
             float ndcX = a / c;
             float ndcY = b / c;
-            if (ndcX < -1.0f || ndcX > 1.0f || ndcY < -1.0f || ndcY > 1.0f) continue;
+            if (ndcX < -1.0f || ndcX > 1.0f || ndcY < -1.0f || ndcY > 1.0f)
+                continue;
 
             int px = static_cast<int>((ndcX * 0.5f + 0.5f) * (textureWidth - 1));
-            
+
             int py = static_cast<int>(((ndcY * 0.5f + 0.5f)) * (textureHeight - 1));
-            if (px < 0 || py < 0 || px >= (int)textureWidth || py >= (int)textureHeight) continue;
+            if (px < 0 || py < 0 || px >= (int)textureWidth || py >= (int)textureHeight)
+                continue;
 
             size_t idx = (static_cast<size_t>(py) * textureWidth + static_cast<size_t>(px)) * 3;
 
-            // Visualize photon color based on stored power (diffuse albedo * light power).
+            // Visualize photon color based on stored power
             float3 power = photonPowers[i];
-            // Simple tone mapping: boost intensity for visualization.
-            const float scale = 50000.0f;
-            float3 col = power * scale;
 
-            // Clamp to [0,1] without relying on fminf overloads.
-            if (col.x > 1.0f) col.x = 1.0f;
-            if (col.y > 1.0f) col.y = 1.0f;
-            if (col.z > 1.0f) col.z = 1.0f;
+            // Normalize to get the color direction, then boost for visibility
+            float maxComp = fmaxf(fmaxf(power.x, power.y), power.z);
+            float3 col;
+            if (maxComp > 0.0f)
+            {
+                // Normalize and make bright for visibility
+                col = power / maxComp;
+            }
+            else
+            {
+                col = make_float3(0.5f, 0.5f, 0.5f); // Gray for zero power
+            }
 
             pixelBuffer[idx + 0] = static_cast<unsigned char>(col.x * 255.0f);
             pixelBuffer[idx + 1] = static_cast<unsigned char>(col.y * 255.0f);
             pixelBuffer[idx + 2] = static_cast<unsigned char>(col.z * 255.0f);
         }
 
-        
         glBindTexture(GL_TEXTURE_2D, textureID);
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, textureWidth, textureHeight, GL_RGB, GL_UNSIGNED_BYTE, pixelBuffer.data());
 
-        
         glUseProgram(shaderProgram);
         glBindVertexArray(quadVAO);
         glBindTexture(GL_TEXTURE_2D, textureID);
@@ -386,6 +386,3 @@ public:
         glDisable(GL_SCISSOR_TEST);
     }
 };
-
-
-

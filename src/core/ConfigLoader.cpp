@@ -32,6 +32,36 @@ static bool extractNumber(const std::string &text, const std::string &key, T &ou
     return true;
 }
 
+// Helper to extract a boolean value like: "enabled": true
+static bool extractBool(const std::string &text, const std::string &key, bool &out)
+{
+    const std::string pattern = "\"" + key + "\"";
+    size_t pos = text.find(pattern);
+    if (pos == std::string::npos)
+        return false;
+
+    pos = text.find(':', pos);
+    if (pos == std::string::npos)
+        return false;
+
+    ++pos; // move past ':'
+    while (pos < text.size() && (text[pos] == ' ' || text[pos] == '\t'))
+        ++pos;
+
+    // Check for true/false
+    if (text.substr(pos, 4) == "true")
+    {
+        out = true;
+        return true;
+    }
+    else if (text.substr(pos, 5) == "false")
+    {
+        out = false;
+        return true;
+    }
+    return false;
+}
+
 // Helper to extract a float3 array like: "eye": [x, y, z]
 static bool extractFloat3(const std::string &text, const std::string &key, float3 &out)
 {
@@ -74,9 +104,12 @@ PhotonMappingConfig ConfigLoader::load(const std::string &path)
 
     unsigned int uval = 0;
     float fval = 0.0f;
+    bool bval = false;
 
     if (extractNumber<unsigned int>(text, "max_photons", uval))
         cfg.max_photons = uval;
+    if (extractNumber<float>(text, "photon_collision_radius", fval))
+        cfg.photon_collision_radius = fval;
     if (extractNumber<float>(text, "direct_weight", fval))
         cfg.direct_weight = fval;
     if (extractNumber<float>(text, "indirect_weight", fval))
@@ -85,6 +118,14 @@ PhotonMappingConfig ConfigLoader::load(const std::string &path)
         cfg.caustics_weight = fval;
     if (extractNumber<float>(text, "participating_media_weight", fval))
         cfg.participating_media_weight = fval;
+
+    // Animation configuration
+    if (extractBool(text, "enabled", bval))
+        cfg.animation.enabled = bval;
+    if (extractNumber<float>(text, "photon_speed", fval))
+        cfg.animation.photonSpeed = fval;
+    if (extractNumber<float>(text, "emission_interval", fval))
+        cfg.animation.emissionInterval = fval;
 
     // Optional camera configuration.
     float3 eye, lookAt, up;
@@ -103,8 +144,15 @@ PhotonMappingConfig ConfigLoader::load(const std::string &path)
             cfg.camera.fov = fovVal;
     }
 
-    std::cout << "ConfigLoader: loaded photon mapping config from " << path
-              << " (max_photons=" << cfg.max_photons << ")" << std::endl;
+    std::cout << "ConfigLoader: loaded photon mapping config from " << path << std::endl;
+    std::cout << "  max_photons=" << cfg.max_photons << std::endl;
+    std::cout << "  animated=" << (cfg.animation.enabled ? "true" : "false");
+    if (cfg.animation.enabled)
+    {
+        std::cout << " (speed=" << cfg.animation.photonSpeed
+                  << ", interval=" << cfg.animation.emissionInterval << "s)";
+    }
+    std::cout << std::endl;
 
     return cfg;
 }

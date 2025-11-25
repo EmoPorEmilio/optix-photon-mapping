@@ -1,5 +1,5 @@
 #include "RasterRenderer.h"
-#include "../../core/Application.h"
+#include "../photon/AnimatedPhoton.h"
 #include "../../scene/Triangle.h"
 #include "../../scene/Sphere.h"
 #include "../../lighting/QuadLight.h"
@@ -18,11 +18,16 @@ RasterRenderer::RasterRenderer(Window *w, const ViewportRect &vp)
 
 RasterRenderer::~RasterRenderer()
 {
-    if (shaderProgram) glDeleteProgram(shaderProgram);
-    if (VAO) glDeleteVertexArrays(1, &VAO);
-    if (VBO) glDeleteBuffers(1, &VBO);
-    if (photonVAO) glDeleteVertexArrays(1, &photonVAO);
-    if (photonVBO) glDeleteBuffers(1, &photonVBO);
+    if (shaderProgram)
+        glDeleteProgram(shaderProgram);
+    if (VAO)
+        glDeleteVertexArrays(1, &VAO);
+    if (VBO)
+        glDeleteBuffers(1, &VBO);
+    if (photonVAO)
+        glDeleteVertexArrays(1, &photonVAO);
+    if (photonVBO)
+        glDeleteBuffers(1, &photonVBO);
 }
 
 void RasterRenderer::setCamera(Camera *cam)
@@ -36,7 +41,7 @@ void RasterRenderer::setScene(Scene *s)
     buildSceneGeometry();
 }
 
-void RasterRenderer::setAnimatedPhotons(const std::vector<AnimatedPhoton>& p)
+void RasterRenderer::setAnimatedPhotons(const std::vector<AnimatedPhoton> &p)
 {
     photons = p;
 }
@@ -94,32 +99,46 @@ void RasterRenderer::createShaderProgram()
 
 void RasterRenderer::buildSceneGeometry()
 {
-    if (!scene) return;
+    if (!scene)
+        return;
 
     std::vector<float> bufferData; // x, y, z, r, g, b
 
-    auto addTriangle = [&](const float3& v0, const float3& v1, const float3& v2, const float3& color) {
-        bufferData.push_back(v0.x); bufferData.push_back(v0.y); bufferData.push_back(v0.z);
-        bufferData.push_back(color.x); bufferData.push_back(color.y); bufferData.push_back(color.z);
+    auto addTriangle = [&](const float3 &v0, const float3 &v1, const float3 &v2, const float3 &color)
+    {
+        bufferData.push_back(v0.x);
+        bufferData.push_back(v0.y);
+        bufferData.push_back(v0.z);
+        bufferData.push_back(color.x);
+        bufferData.push_back(color.y);
+        bufferData.push_back(color.z);
 
-        bufferData.push_back(v1.x); bufferData.push_back(v1.y); bufferData.push_back(v1.z);
-        bufferData.push_back(color.x); bufferData.push_back(color.y); bufferData.push_back(color.z);
+        bufferData.push_back(v1.x);
+        bufferData.push_back(v1.y);
+        bufferData.push_back(v1.z);
+        bufferData.push_back(color.x);
+        bufferData.push_back(color.y);
+        bufferData.push_back(color.z);
 
-        bufferData.push_back(v2.x); bufferData.push_back(v2.y); bufferData.push_back(v2.z);
-        bufferData.push_back(color.x); bufferData.push_back(color.y); bufferData.push_back(color.z);
+        bufferData.push_back(v2.x);
+        bufferData.push_back(v2.y);
+        bufferData.push_back(v2.z);
+        bufferData.push_back(color.x);
+        bufferData.push_back(color.y);
+        bufferData.push_back(color.z);
     };
 
     std::cout << "Building Raster Geometry..." << std::endl;
     int objCount = 0;
 
-    for (const auto& obj : scene->getObjects())
+    for (const auto &obj : scene->getObjects())
     {
         objCount++;
-        if (auto tri = dynamic_cast<Triangle*>(obj.get()))
+        if (auto tri = dynamic_cast<Triangle *>(obj.get()))
         {
             addTriangle(tri->v0, tri->v1, tri->v2, tri->getColor());
         }
-        else if (auto sph = dynamic_cast<Sphere*>(obj.get()))
+        else if (auto sph = dynamic_cast<Sphere *>(obj.get()))
         {
             float3 center = sph->getCenter();
             float radius = sph->getRadius();
@@ -138,12 +157,12 @@ void RasterRenderer::buildSceneGeometry()
                     float theta1 = 2.0f * M_PI * float(j) / float(slices);
                     float theta2 = 2.0f * M_PI * float(j + 1) / float(slices);
 
-                    auto getPos = [&](float phi, float theta) {
+                    auto getPos = [&](float phi, float theta)
+                    {
                         return make_float3(
                             center.x + radius * sin(phi) * cos(theta),
                             center.y + radius * cos(phi),
-                            center.z + radius * sin(phi) * sin(theta)
-                        );
+                            center.z + radius * sin(phi) * sin(theta));
                     };
 
                     float3 p1 = getPos(phi1, theta1);
@@ -159,9 +178,9 @@ void RasterRenderer::buildSceneGeometry()
     }
 
     // Add lights
-    for (const auto& light : scene->getLights())
+    for (const auto &light : scene->getLights())
     {
-        if (auto ql = dynamic_cast<QuadLight*>(light.get()))
+        if (auto ql = dynamic_cast<QuadLight *>(light.get()))
         {
             float3 v0, v1, v2, v3;
             ql->getVertices(v0, v1, v2, v3);
@@ -174,19 +193,21 @@ void RasterRenderer::buildSceneGeometry()
     vertexCount = bufferData.size() / 6;
     std::cout << "RasterRenderer: Generated " << vertexCount << " vertices from " << objCount << " objects." << std::endl;
 
-    if (VAO == 0) glGenVertexArrays(1, &VAO);
-    if (VBO == 0) glGenBuffers(1, &VBO);
+    if (VAO == 0)
+        glGenVertexArrays(1, &VAO);
+    if (VBO == 0)
+        glGenBuffers(1, &VBO);
 
     glBindVertexArray(VAO);
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBufferData(GL_ARRAY_BUFFER, bufferData.size() * sizeof(float), bufferData.data(), GL_STATIC_DRAW);
 
     // Position
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)0);
     glEnableVertexAttribArray(0);
 
     // Color
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
     glBindVertexArray(0);
@@ -199,26 +220,42 @@ void RasterRenderer::renderPhotons()
 
     // Generate sphere geometry for each photon
     std::vector<float> photonBufferData; // x, y, z, r, g, b
-    const float photonRadius = 8.0f; // Visible yellow sphere
-    const float3 photonColor = make_float3(1.0f, 1.0f, 0.0f); // Yellow
+    const float photonRadius = 8.0f;     // Visible sphere size
     const int stacks = 10;
     const int slices = 10;
 
-    auto addTriangle = [&](const float3& v0, const float3& v1, const float3& v2, const float3& color) {
-        photonBufferData.push_back(v0.x); photonBufferData.push_back(v0.y); photonBufferData.push_back(v0.z);
-        photonBufferData.push_back(color.x); photonBufferData.push_back(color.y); photonBufferData.push_back(color.z);
+    auto addTriangle = [&](const float3 &v0, const float3 &v1, const float3 &v2, const float3 &color)
+    {
+        photonBufferData.push_back(v0.x);
+        photonBufferData.push_back(v0.y);
+        photonBufferData.push_back(v0.z);
+        photonBufferData.push_back(color.x);
+        photonBufferData.push_back(color.y);
+        photonBufferData.push_back(color.z);
 
-        photonBufferData.push_back(v1.x); photonBufferData.push_back(v1.y); photonBufferData.push_back(v1.z);
-        photonBufferData.push_back(color.x); photonBufferData.push_back(color.y); photonBufferData.push_back(color.z);
+        photonBufferData.push_back(v1.x);
+        photonBufferData.push_back(v1.y);
+        photonBufferData.push_back(v1.z);
+        photonBufferData.push_back(color.x);
+        photonBufferData.push_back(color.y);
+        photonBufferData.push_back(color.z);
 
-        photonBufferData.push_back(v2.x); photonBufferData.push_back(v2.y); photonBufferData.push_back(v2.z);
-        photonBufferData.push_back(color.x); photonBufferData.push_back(color.y); photonBufferData.push_back(color.z);
+        photonBufferData.push_back(v2.x);
+        photonBufferData.push_back(v2.y);
+        photonBufferData.push_back(v2.z);
+        photonBufferData.push_back(color.x);
+        photonBufferData.push_back(color.y);
+        photonBufferData.push_back(color.z);
     };
 
-    for (const auto& photon : photons)
+    for (const auto &photon : photons)
     {
         float3 center = photon.position;
         float radius = photonRadius;
+
+        // Use the photon's actual power color for visualization
+        // getDisplayColor() normalizes power to [0,1] for proper display
+        float3 photonColor = photon.getDisplayColor();
 
         for (int i = 0; i < stacks; ++i)
         {
@@ -230,12 +267,12 @@ void RasterRenderer::renderPhotons()
                 float theta1 = 2.0f * M_PI * float(j) / float(slices);
                 float theta2 = 2.0f * M_PI * float(j + 1) / float(slices);
 
-                auto getPos = [&](float phi, float theta) {
+                auto getPos = [&](float phi, float theta)
+                {
                     return make_float3(
                         center.x + radius * sin(phi) * cos(theta),
                         center.y + radius * cos(phi),
-                        center.z + radius * sin(phi) * sin(theta)
-                    );
+                        center.z + radius * sin(phi) * sin(theta));
                 };
 
                 float3 p1 = getPos(phi1, theta1);
@@ -252,19 +289,21 @@ void RasterRenderer::renderPhotons()
     if (photonBufferData.empty())
         return;
 
-    if (photonVAO == 0) glGenVertexArrays(1, &photonVAO);
-    if (photonVBO == 0) glGenBuffers(1, &photonVBO);
+    if (photonVAO == 0)
+        glGenVertexArrays(1, &photonVAO);
+    if (photonVBO == 0)
+        glGenBuffers(1, &photonVBO);
 
     glBindVertexArray(photonVAO);
     glBindBuffer(GL_ARRAY_BUFFER, photonVBO);
     glBufferData(GL_ARRAY_BUFFER, photonBufferData.size() * sizeof(float), photonBufferData.data(), GL_DYNAMIC_DRAW);
 
     // Position
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)0);
     glEnableVertexAttribArray(0);
 
     // Color
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
     int photonVertexCount = photonBufferData.size() / 6;
@@ -275,19 +314,21 @@ void RasterRenderer::renderPhotons()
 
 void RasterRenderer::renderFrame()
 {
-    if (!window || !camera || !scene) return;
+    if (!window || !camera || !scene)
+        return;
 
     window->makeCurrent();
 
-    if (shaderProgram == 0) createShaderProgram();
+    if (shaderProgram == 0)
+        createShaderProgram();
 
     glViewport(viewport.x, viewport.y, viewport.width, viewport.height);
     glScissor(viewport.x, viewport.y, viewport.width, viewport.height);
     glEnable(GL_SCISSOR_TEST);
-    
+
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    
+
     glEnable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE); // Ensure we see both sides of triangles
 
@@ -299,22 +340,24 @@ void RasterRenderer::renderFrame()
     float3 up = camera->up;
 
     static int frameCount = 0;
-    if (frameCount++ % 100 == 0) {
+    if (frameCount++ % 100 == 0)
+    {
         std::cout << "Camera Eye: " << eye.x << ", " << eye.y << ", " << eye.z << std::endl;
         std::cout << "Camera LookAt: " << center.x << ", " << center.y << ", " << center.z << std::endl;
     }
 
     // Manual LookAt Matrix Construction
     // Z axis: direction from target to camera (backwards)
-    float3 f = normalize(eye - center); 
-    // X axis: right vector
-    float3 s = normalize(cross(up, f));
-    // Y axis: up vector
-    float3 u = cross(f, s);
+    float3 f = normalize(eye - center);
+    // X axis: right vector (cross(f, up) gives correct right direction)
+    float3 s = normalize(cross(f, up));
+    // Y axis: up vector (cross(s, f) gives correct up direction)
+    float3 u = cross(s, f);
 
     // Debug print once
     static bool printed = false;
-    if (!printed) {
+    if (!printed)
+    {
         std::cout << "RasterRenderer Debug:" << std::endl;
         std::cout << "Eye: " << eye.x << ", " << eye.y << ", " << eye.z << std::endl;
         std::cout << "Center: " << center.x << ", " << center.y << ", " << center.z << std::endl;
@@ -327,9 +370,9 @@ void RasterRenderer::renderFrame()
     }
 
     // Standard LookAt Matrix (Row-Major for C++, but OpenGL expects Column-Major)
-    // We construct it in Row-Major order here, but pass GL_TRUE to transpose it, 
+    // We construct it in Row-Major order here, but pass GL_TRUE to transpose it,
     // OR construct it in Column-Major order and pass GL_FALSE.
-    
+
     // Let's try constructing it in Column-Major order directly for GL_FALSE.
     // [ s.x  u.x  f.x  0 ]
     // [ s.y  u.y  f.y  0 ]
@@ -340,8 +383,7 @@ void RasterRenderer::renderFrame()
         s.x, u.x, f.x, 0.0f,
         s.y, u.y, f.y, 0.0f,
         s.z, u.z, f.z, 0.0f,
-        -dot(s, eye), -dot(u, eye), -dot(f, eye), 1.0f
-    };
+        -dot(s, eye), -dot(u, eye), -dot(f, eye), 1.0f};
 
     // Projection Matrix
     float fov = camera->fov; // Camera stores FOV in radians
@@ -355,7 +397,7 @@ void RasterRenderer::renderFrame()
     // [       0          1/tan            0           0 ]
     // [       0             0     -(f+n)/(f-n)  -2fn/(f-n) ]
     // [       0             0            -1           0 ]
-    
+
     // BUT: We are passing GL_FALSE to glUniformMatrix4fv, so we need to provide data in COLUMN-MAJOR order.
     // Array layout:
     // 0  4  8  12
@@ -367,8 +409,7 @@ void RasterRenderer::renderFrame()
         1.0f / (aspect * tanHalfFov), 0.0f, 0.0f, 0.0f,
         0.0f, 1.0f / tanHalfFov, 0.0f, 0.0f,
         0.0f, 0.0f, -(farPlane + nearPlane) / (farPlane - nearPlane), -1.0f,
-        0.0f, 0.0f, -(2.0f * farPlane * nearPlane) / (farPlane - nearPlane), 0.0f
-    };
+        0.0f, 0.0f, -(2.0f * farPlane * nearPlane) / (farPlane - nearPlane), 0.0f};
 
     int viewLoc = glGetUniformLocation(shaderProgram, "view");
     int projLoc = glGetUniformLocation(shaderProgram, "projection");

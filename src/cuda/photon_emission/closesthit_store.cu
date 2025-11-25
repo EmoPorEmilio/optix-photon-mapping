@@ -36,11 +36,7 @@ __device__ void store_photon(const float3 &hit_point, const float3 &incident_dir
         Photon photon;
         photon.position = hit_point;
         photon.power = throughput;
-
-        float3 normalized_dir = normalize(incident_dir);
-        float phi = atan2f(normalized_dir.z, normalized_dir.x);
-        photon.phi = (char)((phi + M_PI) / (2.0f * M_PI) * 255.0f);
-        photon.theta = (char)(acosf(normalized_dir.y) / M_PI * 255.0f);
+        photon.incidentDir = normalize(incident_dir);
         photon.flag = 0;
 
         params.photons_out[stored_idx] = photon;
@@ -151,7 +147,7 @@ extern "C" __global__ void __closesthit__photon_hit()
 extern "C" __global__ void __closesthit__photon_sphere_hit()
 {
     const unsigned int prim_idx = optixGetPrimitiveIndex();
-    
+
     const float3 hit_point = optixGetWorldRayOrigin() + optixGetRayTmax() * optixGetWorldRayDirection();
     const float3 incident_dir = optixGetWorldRayDirection();
 
@@ -176,7 +172,7 @@ extern "C" __global__ void __closesthit__photon_sphere_hit()
 
     // Store photon only if it has bounced at least once AND is hitting a diffuse surface.
     // (Spheres are currently only specular/transmissive, so this effectively disables storage on them, which is correct)
-    if (depth > 0 && mat.type == MATERIAL_DIFFUSE) 
+    if (depth > 0 && mat.type == MATERIAL_DIFFUSE)
     {
         store_photon(hit_point, incident_dir, throughput);
     }
@@ -190,7 +186,7 @@ extern "C" __global__ void __closesthit__photon_sphere_hit()
     }
 
     float3 new_dir;
-    
+
     if (mat.type == MATERIAL_TRANSMISSIVE)
     {
         // Refractive behavior with simple inside/outside tracking using insideFlag.
