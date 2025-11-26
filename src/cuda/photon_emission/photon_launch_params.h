@@ -41,9 +41,13 @@ struct PhotonLaunchParams
 
     unsigned int max_depth;
 
-    // Output buffers
+    // Output buffers - Global photon map (indirect illumination)
     Photon* photons_out;
     CUdeviceptr photon_counter;
+
+    // Caustic photon map (specular/transmissive -> diffuse)
+    Photon* caustic_photons_out;
+    CUdeviceptr caustic_photon_counter;
 
 
     __host__ __device__ PhotonLaunchParams() {}

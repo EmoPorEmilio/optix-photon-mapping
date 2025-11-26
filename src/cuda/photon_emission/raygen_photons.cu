@@ -35,9 +35,16 @@ extern "C" __global__ void __raygen__photon_emitter()
     unsigned int p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11;
 
     // Bounce loop driven from raygen.
+    // Payload 9 bit layout: bit 31 = prevWasSpecular, bit 30 = insideFlag, bits 0-29 = depth
     unsigned int depth = 0u;
+    unsigned int insideFlag = 0u;
+    unsigned int prevWasSpecular = 0u;
+    
     for (;;)
     {
+        // Pack state into payload 9
+        unsigned int packedState = (prevWasSpecular << 31) | (insideFlag << 30) | (depth & 0x3fffffffu);
+        
         // Pack payload for this segment.
         p0  = __float_as_uint(throughput.x);
         p1  = __float_as_uint(throughput.y);
@@ -48,7 +55,7 @@ extern "C" __global__ void __raygen__photon_emitter()
         p6  = __float_as_uint(direction.x);
         p7  = __float_as_uint(direction.y);
         p8  = __float_as_uint(direction.z);
-        p9  = depth;
+        p9  = packedState;
         p10 = photon_idx;       // for RNG in closest hit
         p11 = 1u;               // continue flag (1 = continue, 0 = terminate)
 
@@ -76,8 +83,14 @@ extern "C" __global__ void __raygen__photon_emitter()
         direction.x  = __uint_as_float(p6);
         direction.y  = __uint_as_float(p7);
         direction.z  = __uint_as_float(p8);
-        depth = p9;
-        unsigned int cont  = p11;
+        
+        // Unpack state from payload 9
+        packedState = p9;
+        depth = packedState & 0x3fffffffu;
+        insideFlag = (packedState >> 30) & 0x1u;
+        prevWasSpecular = (packedState >> 31) & 0x1u;
+        
+        unsigned int cont = p11;
 
         if (!cont || depth >= params.max_depth)
             break;

@@ -20,6 +20,7 @@
 #include "../scene/Camera.h"
 #include "../scene/Scene.h" 
 #include "../lighting/QuadLight.h"
+#include "../rendering/photon/Photon.h"
 
 #include <iostream>
 #include <fstream>
@@ -76,6 +77,55 @@ private:
     CUdeviceptr d_photon_buffer = 0;
     CUdeviceptr d_photon_counter = 0;
 
+    // Caustic photon map buffers
+    CUdeviceptr d_caustic_photon_buffer = 0;
+    CUdeviceptr d_caustic_photon_counter = 0;
+
+    // Direct lighting pipeline
+    OptixModule direct_module = 0;
+    OptixPipeline direct_pipeline = 0;
+    OptixProgramGroup direct_raygen_group = 0;
+    OptixProgramGroup direct_miss_group = 0;
+    OptixProgramGroup direct_shadow_miss_group = 0;
+    OptixProgramGroup direct_triangle_hit_group = 0;
+    OptixProgramGroup direct_sphere_hit_group = 0;
+    OptixProgramGroup direct_shadow_triangle_hit_group = 0;
+    OptixProgramGroup direct_shadow_sphere_hit_group = 0;
+    OptixShaderBindingTable direct_sbt = {};
+
+    // Indirect lighting pipeline
+    OptixModule indirect_module = 0;
+    OptixPipeline indirect_pipeline = 0;
+    OptixProgramGroup indirect_raygen_group = 0;
+    OptixProgramGroup indirect_miss_group = 0;
+    OptixProgramGroup indirect_triangle_hit_group = 0;
+    OptixProgramGroup indirect_sphere_hit_group = 0;
+    OptixShaderBindingTable indirect_sbt = {};
+
+    // Caustic lighting pipeline
+    OptixModule caustic_module = 0;
+    OptixPipeline caustic_pipeline = 0;
+    OptixProgramGroup caustic_raygen_group = 0;
+    OptixProgramGroup caustic_miss_group = 0;
+    OptixProgramGroup caustic_triangle_hit_group = 0;
+    OptixProgramGroup caustic_sphere_hit_group = 0;
+    OptixShaderBindingTable caustic_sbt = {};
+
+    // Specular lighting pipeline (reflection/refraction)
+    OptixModule specular_module = 0;
+    OptixPipeline specular_pipeline = 0;
+    OptixProgramGroup specular_raygen_group = 0;
+    OptixProgramGroup specular_miss_group = 0;
+    OptixProgramGroup specular_triangle_hit_group = 0;
+    OptixProgramGroup specular_sphere_hit_group = 0;
+    OptixShaderBindingTable specular_sbt = {};
+
+    // Sphere geometry data
+    float3 sphere1_center = make_float3(185.0f, 82.5f, 169.0f);
+    float sphere1_radius = 82.5f;
+    float3 sphere2_center = make_float3(368.0f, 103.5f, 351.0f);
+    float sphere2_radius = 103.5f;
+
     bool initialized = false;
 
 public:
@@ -98,7 +148,32 @@ public:
     
     bool createPhotonPipeline();
     void launchPhotonPass(unsigned int num_photons, const QuadLight& light,
-                         unsigned int quadLightStartIndex, CUdeviceptr& out_photons, unsigned int& out_count);
+                         unsigned int quadLightStartIndex, 
+                         CUdeviceptr& out_photons, unsigned int& out_count,
+                         CUdeviceptr& out_caustic_photons, unsigned int& out_caustic_count);
+
+    // Direct lighting pipeline
+    bool createDirectLightingPipeline();
+    void launchDirectLighting(unsigned int width, unsigned int height, const Camera& camera, float4* d_output);
+
+    // Indirect lighting pipeline (color bleeding)
+    bool createIndirectLightingPipeline();
+    void launchIndirectLighting(unsigned int width, unsigned int height, const Camera& camera,
+                                const Photon* d_photon_map, unsigned int photon_count,
+                                float gather_radius, float4* d_output);
+
+    // Caustic lighting pipeline (specular/glossy spheres)
+    bool createCausticLightingPipeline();
+    void launchCausticLighting(unsigned int width, unsigned int height, const Camera& camera,
+                               const Photon* d_caustic_map, unsigned int caustic_count,
+                               float gather_radius, float4* d_output);
+
+    // Specular lighting pipeline (reflection/refraction on spheres)
+    bool createSpecularLightingPipeline();
+    void launchSpecularLighting(unsigned int width, unsigned int height, const Camera& camera,
+                                const Photon* d_global_map, unsigned int global_count,
+                                const Photon* d_caustic_map, unsigned int caustic_count,
+                                float gather_radius, float4* d_output);
 
     void render(unsigned int width, unsigned int height, const Camera &camera, unsigned char *output_buffer);
 
@@ -121,6 +196,30 @@ private:
     bool createPhotonProgramGroups();
     bool linkPhotonPipeline();
     void buildPhotonSBT();
+
+    // Direct lighting helpers
+    bool loadDirectModule();
+    bool createDirectProgramGroups();
+    bool linkDirectPipeline();
+    void buildDirectSBT();
+
+    // Indirect lighting helpers
+    bool loadIndirectModule();
+    bool createIndirectProgramGroups();
+    bool linkIndirectPipeline();
+    void buildIndirectSBT();
+
+    // Caustic lighting helpers
+    bool loadCausticModule();
+    bool createCausticProgramGroups();
+    bool linkCausticPipeline();
+    void buildCausticSBT();
+
+    // Specular lighting helpers
+    bool loadSpecularModule();
+    bool createSpecularProgramGroups();
+    bool linkSpecularPipeline();
+    void buildSpecularSBT();
 
     void cleanup();
 };

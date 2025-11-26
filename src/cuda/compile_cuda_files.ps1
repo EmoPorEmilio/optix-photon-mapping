@@ -49,8 +49,16 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $projectRoot = Split-Path -Parent (Split-Path -Parent $scriptDir)
 $cuFile = Join-Path $projectRoot "src\cuda\raytrace.cu"
 $photonCuFile = Join-Path $projectRoot "src\cuda\photon_emission_combined.cu"
+$directCuFile = Join-Path $projectRoot "src\cuda\direct_lighting_combined.cu"
+$indirectCuFile = Join-Path $projectRoot "src\cuda\indirect_lighting_combined.cu"
+$causticCuFile = Join-Path $projectRoot "src\cuda\caustic_lighting_combined.cu"
+$specularCuFile = Join-Path $projectRoot "src\cuda\specular_lighting_combined.cu"
 $outputFile = Join-Path $projectRoot "ptx\raytrace.optixir"
 $photonOutputFile = Join-Path $projectRoot "ptx\photon_emission.optixir"
+$directOutputFile = Join-Path $projectRoot "ptx\direct_lighting.optixir"
+$indirectOutputFile = Join-Path $projectRoot "ptx\indirect_lighting.optixir"
+$causticOutputFile = Join-Path $projectRoot "ptx\caustic_lighting.optixir"
+$specularOutputFile = Join-Path $projectRoot "ptx\specular_lighting.optixir"
 
 Write-Host "Compiling CUDA kernels..." -ForegroundColor Cyan
 
@@ -92,10 +100,46 @@ if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
+# Compile direct lighting
+Write-Host "Compiling direct_lighting_combined.cu..." -ForegroundColor Gray
+& $nvccPath ($commonArgs + @("-I$projectRoot\src\cuda\direct_lighting", "-o", "$directOutputFile", "$directCuFile"))
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "✗ Failed to compile direct_lighting_combined.cu" -ForegroundColor Red
+    exit $LASTEXITCODE
+}
+
+# Compile indirect lighting
+Write-Host "Compiling indirect_lighting_combined.cu..." -ForegroundColor Gray
+& $nvccPath ($commonArgs + @("-I$projectRoot\src\cuda\indirect_lighting", "-o", "$indirectOutputFile", "$indirectCuFile"))
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "✗ Failed to compile indirect_lighting_combined.cu" -ForegroundColor Red
+    exit $LASTEXITCODE
+}
+
+# Compile caustic lighting
+Write-Host "Compiling caustic_lighting_combined.cu..." -ForegroundColor Gray
+& $nvccPath ($commonArgs + @("-I$projectRoot\src\cuda\caustic_lighting", "-o", "$causticOutputFile", "$causticCuFile"))
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "✗ Failed to compile caustic_lighting_combined.cu" -ForegroundColor Red
+    exit $LASTEXITCODE
+}
+
+# Compile specular lighting
+Write-Host "Compiling specular_lighting_combined.cu..." -ForegroundColor Gray
+& $nvccPath ($commonArgs + @("-I$projectRoot\src\cuda\specular_lighting", "-o", "$specularOutputFile", "$specularCuFile"))
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "✗ Failed to compile specular_lighting_combined.cu" -ForegroundColor Red
+    exit $LASTEXITCODE
+}
+
 if ($LASTEXITCODE -eq 0) {
     Write-Host "✓ Successfully compiled CUDA kernels:" -ForegroundColor Green
     Write-Host "  - $outputFile" -ForegroundColor Gray
     Write-Host "  - $photonOutputFile" -ForegroundColor Gray
+    Write-Host "  - $directOutputFile" -ForegroundColor Gray
+    Write-Host "  - $indirectOutputFile" -ForegroundColor Gray
+    Write-Host "  - $causticOutputFile" -ForegroundColor Gray
+    Write-Host "  - $specularOutputFile" -ForegroundColor Gray
 }
 else {
     Write-Host "✗ Compilation failed with exit code $LASTEXITCODE" -ForegroundColor Red

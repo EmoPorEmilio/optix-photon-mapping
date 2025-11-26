@@ -250,6 +250,13 @@ void RasterRenderer::renderPhotons()
 
     for (const auto &photon : photons)
     {
+        // Only show ACTIVE (moving) photons in animated mode
+        // Stopped photons represent first hit = direct illumination = not visualized
+        if (!photon.isActive)
+        {
+            continue;
+        }
+
         float3 center = photon.position;
         float radius = photonRadius;
 

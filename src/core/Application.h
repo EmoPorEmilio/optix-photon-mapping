@@ -16,6 +16,11 @@
 #include "../rendering/photon/PhotonMapRenderer.h"
 #include "../rendering/photon/AnimatedPhoton.h"
 #include "../rendering/photon/Photon.h"
+#include "../rendering/direct/DirectLightRenderer.h"
+#include "../rendering/indirect/IndirectLightRenderer.h"
+#include "../rendering/caustic/CausticLightRenderer.h"
+#include "../rendering/specular/SpecularLightRenderer.h"
+#include "../rendering/combined/CombinedRenderer.h"
 #include "../optix/OptixManager.h"
 #include <iostream>
 #include <memory>
@@ -29,7 +34,12 @@ private:
     OpenGLManager glManager;
     std::unique_ptr<InputCommandManager> inputCommandManager;
     std::unique_ptr<RasterRenderer> leftRenderer;
-    std::unique_ptr<PhotonMapRenderer> rightRenderer;
+    std::unique_ptr<PhotonMapRenderer> photonMapRenderer;
+    std::unique_ptr<DirectLightRenderer> directLightRenderer;
+    std::unique_ptr<IndirectLightRenderer> indirectLightRenderer;
+    std::unique_ptr<CausticLightRenderer> causticLightRenderer;
+    std::unique_ptr<SpecularLightRenderer> specularLightRenderer;
+    std::unique_ptr<CombinedRenderer> combinedRenderer;
     Camera camera;
     Scene scene;
     OptixManager optixManager;
@@ -51,6 +61,9 @@ private:
 
     // Photon Map Storage (stores photons after first diffuse bounce)
     std::vector<Photon> photonMap;
+    
+    // Caustic Photon Map (stores photons that hit S/T then diffuse)
+    std::vector<Photon> causticPhotonMap;
 
     // Random number generator for Russian Roulette and bounce directions
     std::mt19937 rng;
@@ -75,6 +88,19 @@ private:
         MODE_GATHER
     };
     RenderMode currentMode = MODE_PHOTON_DOTS;
+
+    // Right viewport display mode
+    enum RightViewportMode
+    {
+        MODE_GLOBAL_PHOTONS,    // Global photon map (dot display)
+        MODE_CAUSTIC_PHOTONS,   // Caustic photon map (dot display)
+        MODE_DIRECT_LIGHTING,   // Direct lighting raytracing
+        MODE_INDIRECT_LIGHTING, // Indirect lighting (color bleeding from photon map)
+        MODE_CAUSTIC_LIGHTING,  // Caustic highlights on walls
+        MODE_SPECULAR_LIGHTING, // Reflection/refraction on spheres
+        MODE_COMBINED           // All modes combined with weights
+    };
+    RightViewportMode rightViewportMode = MODE_GLOBAL_PHOTONS;
 
 public:
     Application();

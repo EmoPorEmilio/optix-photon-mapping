@@ -15,7 +15,8 @@ struct AnimatedPhoton
     bool isActive;
 
     // === Phase 1: Bouncing & Color Tracking ===
-    float3 power;             // Current photon power (RGB) - starts as light emission, modulated by surfaces
+    float3 power;             // Current photon power (RGB) - modulated for NEXT bounce
+    float3 arrivalPower;      // Power when photon ARRIVED at current position (for display)
     unsigned int bounceCount; // How many times this photon has bounced
     unsigned int maxBounces;  // Maximum bounces before termination
 
@@ -34,6 +35,7 @@ struct AnimatedPhoton
                        velocity(make_float3(0.0f, 0.0f, 0.0f)),
                        isActive(true),
                        power(make_float3(1.0f, 1.0f, 1.0f)),
+                       arrivalPower(make_float3(1.0f, 1.0f, 1.0f)),
                        bounceCount(0),
                        maxBounces(MAX_PHOTON_BOUNCES),
                        lastHitNormal(make_float3(0.0f, 1.0f, 0.0f)),
@@ -51,17 +53,11 @@ struct AnimatedPhoton
         pathColors.push_back(power);
     }
 
-    // Get visual color (normalized power for display)
+    // Get visual color for display
+    // Animated mode: photons travel from light source, always WHITE
+    // For color-modulated photon visualization, use instant mode + PhotonMapRenderer
     float3 getDisplayColor() const
     {
-        // Normalize power to [0,1] range for display
-        float maxComp = fmaxf(fmaxf(power.x, power.y), power.z);
-        if (maxComp > 0.0f)
-        {
-            return power / maxComp;
-        }
-        // Power is zero (e.g., blue photon hit red wall) - show last surface color
-        // This represents a photon that was fully absorbed by an incompatible surface
-        return lastSurfaceColor;
+        return make_float3(1.0f, 1.0f, 1.0f); // White photons from light
     }
 };

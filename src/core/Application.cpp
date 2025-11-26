@@ -8,6 +8,7 @@
 #include "ConfigLoader.h"
 #include "../rendering/raster/RasterRenderer.h"
 #include <optix_types.h>
+#include <cuda_runtime.h>
 #include <cmath>
 
 static unsigned int NUM_PHOTONS = 100000;
@@ -46,10 +47,45 @@ bool Application::initialize()
         return false;
     }
 
-    rightRenderer = std::make_unique<PhotonMapRenderer>();
-    if (!rightRenderer->initialize(glManager.getWindow()))
+    photonMapRenderer = std::make_unique<PhotonMapRenderer>();
+    if (!photonMapRenderer->initialize(glManager.getWindow()))
     {
         std::cerr << "Failed to initialize photon map renderer" << std::endl;
+        return false;
+    }
+
+    directLightRenderer = std::make_unique<DirectLightRenderer>();
+    if (!directLightRenderer->initialize(glManager.getWindow()->get()))
+    {
+        std::cerr << "Failed to initialize direct light renderer" << std::endl;
+        return false;
+    }
+
+    indirectLightRenderer = std::make_unique<IndirectLightRenderer>(glManager.getWindow()->get(), glManager.getRightViewport());
+    if (!indirectLightRenderer->initialize(&optixManager))
+    {
+        std::cerr << "Failed to initialize indirect light renderer" << std::endl;
+        return false;
+    }
+
+    causticLightRenderer = std::make_unique<CausticLightRenderer>(glManager.getWindow()->get(), glManager.getRightViewport());
+    if (!causticLightRenderer->initialize(&optixManager))
+    {
+        std::cerr << "Failed to initialize caustic light renderer" << std::endl;
+        return false;
+    }
+
+    specularLightRenderer = std::make_unique<SpecularLightRenderer>(glManager.getWindow()->get(), glManager.getRightViewport());
+    if (!specularLightRenderer->initialize(&optixManager))
+    {
+        std::cerr << "Failed to initialize specular light renderer" << std::endl;
+        return false;
+    }
+
+    combinedRenderer = std::make_unique<CombinedRenderer>(glManager.getWindow()->get(), glManager.getRightViewport());
+    if (!combinedRenderer->initialize(&optixManager))
+    {
+        std::cerr << "Failed to initialize combined renderer" << std::endl;
         return false;
     }
 
@@ -57,17 +93,69 @@ bool Application::initialize()
     inputCommandManager->bindKey(GLFW_KEY_ESCAPE, [this]()
                                  { glManager.getWindow()->requestClose(); });
 
+    // E key exports combined image
+    inputCommandManager->bindKey(GLFW_KEY_E, [this]()
+                                 {
+                                     combinedRenderer->exportToImage("combined_render");
+                                 });
+
+    // M key cycles through right viewport modes: Global -> Caustic dots -> Direct -> Indirect -> Caustic light -> Global
     inputCommandManager->bindKey(GLFW_KEY_M, [this]()
                                  {
-                                     if (currentMode == MODE_PHOTON_DOTS)
+                                     if (rightViewportMode == MODE_GLOBAL_PHOTONS)
                                      {
-                                         currentMode = MODE_GATHER;
-                                         std::cout << "Switched to MODE_GATHER" << std::endl;
+                                         rightViewportMode = MODE_CAUSTIC_PHOTONS;
+                                         std::cout << "Switched to CAUSTIC photon map display (" << causticPhotonMap.size() << " photons)" << std::endl;
+                                         if (!causticPhotonMap.empty())
+                                         {
+                                             photonMapRenderer->uploadFromHost(causticPhotonMap.data(), causticPhotonMap.size());
+                                         }
+                                     }
+                                     else if (rightViewportMode == MODE_CAUSTIC_PHOTONS)
+                                     {
+                                         rightViewportMode = MODE_DIRECT_LIGHTING;
+                                         std::cout << "Switched to DIRECT LIGHTING raytracing" << std::endl;
+                                     }
+                                     else if (rightViewportMode == MODE_DIRECT_LIGHTING)
+                                     {
+                                         rightViewportMode = MODE_INDIRECT_LIGHTING;
+                                         std::cout << "Switched to INDIRECT LIGHTING (color bleeding) - " << photonMap.size() << " photons" << std::endl;
+                                         if (!photonMap.empty())
+                                         {
+                                             indirectLightRenderer->uploadPhotonMap(photonMap);
+                                         }
+                                     }
+                                     else if (rightViewportMode == MODE_INDIRECT_LIGHTING)
+                                     {
+                                         rightViewportMode = MODE_CAUSTIC_LIGHTING;
+                                         std::cout << "Switched to CAUSTIC LIGHTING (highlights on walls) - " << causticPhotonMap.size() << " caustics" << std::endl;
+                                         if (!causticPhotonMap.empty())
+                                         {
+                                             causticLightRenderer->uploadCausticMap(causticPhotonMap);
+                                         }
+                                     }
+                                     else if (rightViewportMode == MODE_CAUSTIC_LIGHTING)
+                                     {
+                                         rightViewportMode = MODE_SPECULAR_LIGHTING;
+                                         std::cout << "Switched to SPECULAR LIGHTING (reflection/refraction with full scene)" << std::endl;
+                                         specularLightRenderer->uploadGlobalPhotonMap(photonMap);
+                                         specularLightRenderer->uploadCausticPhotonMap(causticPhotonMap);
+                                     }
+                                     else if (rightViewportMode == MODE_SPECULAR_LIGHTING)
+                                     {
+                                         rightViewportMode = MODE_COMBINED;
+                                         std::cout << "Switched to COMBINED mode (all weighted)" << std::endl;
+                                         combinedRenderer->uploadGlobalPhotonMap(photonMap);
+                                         combinedRenderer->uploadCausticPhotonMap(causticPhotonMap);
                                      }
                                      else
                                      {
-                                         currentMode = MODE_PHOTON_DOTS;
-                                         std::cout << "Switched to MODE_PHOTON_DOTS" << std::endl;
+                                         rightViewportMode = MODE_GLOBAL_PHOTONS;
+                                         std::cout << "Switched to GLOBAL photon map display (" << photonMap.size() << " photons)" << std::endl;
+                                         if (!photonMap.empty())
+                                         {
+                                             photonMapRenderer->uploadFromHost(photonMap.data(), photonMap.size());
+                                         }
                                      } });
 
     inputCommandManager->setMouseDragLeftHandler([this](int deltaX, int deltaY)
@@ -203,6 +291,30 @@ bool Application::initialize()
         return false;
     }
 
+    if (!optixManager.createDirectLightingPipeline())
+    {
+        std::cerr << "Failed to create direct lighting pipeline" << std::endl;
+        return false;
+    }
+
+    if (!optixManager.createIndirectLightingPipeline())
+    {
+        std::cerr << "Failed to create indirect lighting pipeline" << std::endl;
+        return false;
+    }
+
+    if (!optixManager.createCausticLightingPipeline())
+    {
+        std::cerr << "Failed to create caustic lighting pipeline" << std::endl;
+        return false;
+    }
+
+    if (!optixManager.createSpecularLightingPipeline())
+    {
+        std::cerr << "Failed to create specular lighting pipeline" << std::endl;
+        return false;
+    }
+
     std::vector<OptixVertex> vertices = scene.exportTriangleVertices();
     std::vector<float3> colors = scene.exportTriangleColors();
 
@@ -211,6 +323,24 @@ bool Application::initialize()
         std::cerr << "Failed to build triangle GAS" << std::endl;
         return false;
     }
+
+    // Add the two spheres for photon mapping (transmissive + specular)
+    // Sphere 1: transmissive glass sphere
+    float3 sphere1Center = make_float3(185.0f, 82.5f, 169.0f);
+    float sphere1Radius = 82.5f;
+    // Sphere 2: specular mirror sphere
+    float3 sphere2Center = make_float3(368.0f, 103.5f, 351.0f);
+    float sphere2Radius = 103.5f;
+
+    if (!optixManager.buildSphereGAS(sphere1Center, sphere1Radius, sphere2Center, sphere2Radius))
+    {
+        std::cerr << "Failed to build sphere GAS" << std::endl;
+        return false;
+    }
+
+    // Add spheres to scene for raster rendering
+    scene.addObject(std::make_unique<Sphere>(sphere1Center, sphere1Radius, make_float3(0.9f, 0.95f, 1.0f))); // Glass tint
+    scene.addObject(std::make_unique<Sphere>(sphere2Center, sphere2Radius, make_float3(0.95f, 0.95f, 0.95f))); // Mirror
 
     if (!optixManager.buildIAS())
     {
@@ -231,13 +361,40 @@ bool Application::initialize()
     std::cout << "Left Renderer camera V: (" << camera.getV().x << ", " << camera.getV().y << ", " << camera.getV().z << ")" << std::endl;
     std::cout << "Left Renderer camera W: (" << camera.getW().x << ", " << camera.getW().y << ", " << camera.getW().z << ")" << std::endl;
 
-    rightRenderer->setViewport(glManager.getRightViewport());
-    rightRenderer->setCamera(&camera);
-    rightRenderer->setScene(&scene);
+    photonMapRenderer->setViewport(glManager.getRightViewport());
+    photonMapRenderer->setCamera(&camera);
+    photonMapRenderer->setScene(&scene);
+
+    directLightRenderer->setViewport(glManager.getRightViewport());
+    directLightRenderer->setCamera(&camera);
+    directLightRenderer->setScene(&scene);
+    directLightRenderer->setOptixManager(&optixManager);
+
+    indirectLightRenderer->setViewport(glManager.getRightViewport());
+    indirectLightRenderer->setCamera(&camera);
+    indirectLightRenderer->setScene(&scene);
+    indirectLightRenderer->setGatherRadius(100.0f);  // Larger radius for better gathering
+
+    causticLightRenderer->setViewport(glManager.getRightViewport());
+    causticLightRenderer->setCamera(&camera);
+    causticLightRenderer->setScene(&scene);
+    causticLightRenderer->setGatherRadius(50.0f);  // Tighter radius for sharper caustics
+
+    specularLightRenderer->setViewport(glManager.getRightViewport());
+    specularLightRenderer->setCamera(&camera);
+    specularLightRenderer->setScene(&scene);
+    specularLightRenderer->setGatherRadius(100.0f);
+
+    combinedRenderer->setViewport(glManager.getRightViewport());
+    combinedRenderer->setCamera(&camera);
+    combinedRenderer->setScene(&scene);
+    combinedRenderer->setWeights(pmc.direct_weight, pmc.indirect_weight, pmc.caustics_weight, 0.5f);  // specular weight
+    combinedRenderer->setGatherRadius(100.0f);
 
     float rightAspect = static_cast<float>(glManager.getRightViewport().width) / static_cast<float>(glManager.getRightViewport().height);
-    std::cout << "Right Renderer (PhotonMap) - Viewport: " << glManager.getRightViewport().width << "x" << glManager.getRightViewport().height
+    std::cout << "Right Renderer - Viewport: " << glManager.getRightViewport().width << "x" << glManager.getRightViewport().height
               << ", Aspect: " << rightAspect << std::endl;
+    std::cout << "  Press M to cycle: Global Photons -> Caustics -> Direct Lighting" << std::endl;
 
     std::cout << "Application::initialize() completed successfully" << std::endl;
     std::cout.flush();
@@ -258,28 +415,74 @@ void Application::run()
     std::cout << "GL Manager is initialized, proceeding..." << std::endl;
     std::cout.flush();
 
-    // INSTANT MODE: Emit and trace all photons immediately
+    // INSTANT MODE: Emit and trace all photons using OptiX (GPU)
     if (!animatedMode)
     {
-        std::cout << "=== INSTANT MODE: Tracing " << maxPhotons << " photons ===" << std::endl;
+        std::cout << "=== INSTANT MODE (OptiX GPU): Tracing " << maxPhotons << " photons ===" << std::endl;
         auto startTime = std::chrono::steady_clock::now();
 
-        emitAllPhotonsInstant();
-
-        auto endTime = std::chrono::steady_clock::now();
-        float elapsedMs = std::chrono::duration<float, std::milli>(endTime - startTime).count();
-
-        std::cout << "=== Photon tracing complete ===" << std::endl;
-        std::cout << "  Photons traced: " << maxPhotons << std::endl;
-        std::cout << "  Photons stored in map: " << photonMap.size() << std::endl;
-        std::cout << "  Time elapsed: " << elapsedMs << " ms" << std::endl;
-        std::cout << "  Rate: " << (maxPhotons / (elapsedMs / 1000.0f)) << " photons/sec" << std::endl;
-
-        // Upload photon map to the right renderer for visualization
-        if (!photonMap.empty())
+        // Get the quad light for photon emission
+        const auto &lights = scene.getLights();
+        if (!lights.empty() && lights[0]->isAreaLight())
         {
-            rightRenderer->uploadFromHost(photonMap.data(), photonMap.size());
-            std::cout << "  Uploaded " << photonMap.size() << " photons to renderer" << std::endl;
+            const QuadLight *quadLight = static_cast<const QuadLight *>(lights[0].get());
+
+            CUdeviceptr d_photonBuffer;
+            unsigned int storedCount = 0;
+            CUdeviceptr d_causticBuffer;
+            unsigned int causticCount = 0;
+
+            // Launch OptiX photon pass on GPU (returns both global and caustic photons)
+            optixManager.launchPhotonPass(maxPhotons, *quadLight,
+                                          scene.getQuadLightStartIndex(),
+                                          d_photonBuffer, storedCount,
+                                          d_causticBuffer, causticCount);
+
+            auto endTime = std::chrono::steady_clock::now();
+            float elapsedMs = std::chrono::duration<float, std::milli>(endTime - startTime).count();
+
+            std::cout << "=== OptiX Photon tracing complete ===" << std::endl;
+            std::cout << "  Photons launched: " << maxPhotons << std::endl;
+            std::cout << "  Global photons stored: " << storedCount << std::endl;
+            std::cout << "  Caustic photons stored: " << causticCount << std::endl;
+            std::cout << "  Time elapsed: " << elapsedMs << " ms" << std::endl;
+            std::cout << "  Rate: " << (maxPhotons / (elapsedMs / 1000.0f)) << " photons/sec" << std::endl;
+
+            // Copy GLOBAL photons from GPU to CPU
+            photonMap.clear();
+            if (storedCount > 0)
+            {
+                photonMap.resize(storedCount);
+                cudaMemcpy(photonMap.data(), reinterpret_cast<void *>(d_photonBuffer),
+                           storedCount * sizeof(Photon), cudaMemcpyDeviceToHost);
+            }
+
+            // Copy CAUSTIC photons from GPU to CPU
+            causticPhotonMap.clear();
+            if (causticCount > 0)
+            {
+                causticPhotonMap.resize(causticCount);
+                cudaMemcpy(causticPhotonMap.data(), reinterpret_cast<void *>(d_causticBuffer),
+                           causticCount * sizeof(Photon), cudaMemcpyDeviceToHost);
+            }
+
+            // Upload to renderer based on current display mode
+            if (rightViewportMode == MODE_GLOBAL_PHOTONS && !photonMap.empty())
+            {
+                photonMapRenderer->uploadFromHost(photonMap.data(), photonMap.size());
+                std::cout << "  Uploaded " << photonMap.size() << " GLOBAL photons to renderer" << std::endl;
+            }
+            else if (rightViewportMode == MODE_CAUSTIC_PHOTONS && !causticPhotonMap.empty())
+            {
+                photonMapRenderer->uploadFromHost(causticPhotonMap.data(), causticPhotonMap.size());
+                std::cout << "  Uploaded " << causticPhotonMap.size() << " CAUSTIC photons to renderer" << std::endl;
+            }
+
+            std::cout << "  Press M to cycle: Global Photons -> Caustics -> Direct Lighting" << std::endl;
+        }
+        else
+        {
+            std::cerr << "No area light found for OptiX photon emission!" << std::endl;
         }
     }
 
@@ -311,15 +514,8 @@ void Application::run()
                 lastPhotonEmissionTime = currentTime;
             }
 
-            // Update photon positions
-            size_t prevMapSize = photonMap.size();
+            // Update photon positions (simple animation - no bouncing, that's done in OptiX)
             updatePhotons(deltaTime);
-
-            // If new photons were added to the map, upload to right renderer
-            if (photonMap.size() > prevMapSize && !photonMap.empty())
-            {
-                rightRenderer->uploadFromHost(photonMap.data(), photonMap.size());
-            }
 
             // Pass photons to renderer for visualization
             leftRenderer->setAnimatedPhotons(animatedPhotons);
@@ -334,14 +530,31 @@ void Application::run()
             std::cerr << "Exception in left renderer: " << e.what() << std::endl;
         }
 
-        if (currentMode == MODE_PHOTON_DOTS)
+        // Render right viewport based on current mode
+        if (rightViewportMode == MODE_DIRECT_LIGHTING)
         {
-            rightRenderer->render();
+            directLightRenderer->render();
+        }
+        else if (rightViewportMode == MODE_INDIRECT_LIGHTING)
+        {
+            indirectLightRenderer->render();
+        }
+        else if (rightViewportMode == MODE_CAUSTIC_LIGHTING)
+        {
+            causticLightRenderer->render();
+        }
+        else if (rightViewportMode == MODE_SPECULAR_LIGHTING)
+        {
+            specularLightRenderer->render();
+        }
+        else if (rightViewportMode == MODE_COMBINED)
+        {
+            combinedRenderer->render();
         }
         else
         {
-            glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-            glClear(GL_COLOR_BUFFER_BIT);
+            // MODE_GLOBAL_PHOTONS or MODE_CAUSTIC_PHOTONS
+            photonMapRenderer->render();
         }
 
         glManager.getWindow()->swapBuffers();
@@ -441,26 +654,46 @@ void Application::tracePhotonToCompletion(AnimatedPhoton &photon)
         photon.lastHitNormal = collision.normal;
         photon.lastSurfaceColor = collision.surfaceColor;
 
-        // Store photon in map AFTER first bounce (bounceCount > 0)
-        if (photon.bounceCount > 0)
-        {
-            Photon storedPhoton(
-                collision.hitPoint,
-                photon.power,
-                photon.direction);
-            photonMap.push_back(storedPhoton);
-        }
-
         // Russian Roulette: decide if photon survives
         float survivalProbability = collision.diffuseProb;
         float randomValue = uniformDist(rng);
 
         if (randomValue > survivalProbability)
         {
-            // Absorbed
+            // Absorbed - but still store the photon if bounceCount > 0
+            // This captures the incoming flux before absorption
+            if (photon.bounceCount > 0)
+            {
+                Photon storedPhoton(
+                    collision.hitPoint,
+                    photon.power, // Store INCOMING power before absorption
+                    photon.direction);
+                photonMap.push_back(storedPhoton);
+            }
             photon.isActive = false;
             photon.wasAbsorbed = true;
             break;
+        }
+
+        // Store photon in map AFTER first bounce (bounceCount > 0)
+        // Store BEFORE power modulation - this is the incoming flux
+        if (photon.bounceCount > 0)
+        {
+            Photon storedPhoton(
+                collision.hitPoint,
+                photon.power, // Store INCOMING power (before surface modulation)
+                photon.direction);
+            photonMap.push_back(storedPhoton);
+        }
+
+        // NOW modulate power by surface color for the NEXT bounce
+        photon.power = photon.power * collision.surfaceColor / survivalProbability;
+
+        // Clamp power
+        float maxPower = fmaxf(fmaxf(photon.power.x, photon.power.y), photon.power.z);
+        if (maxPower > 3.0f)
+        {
+            photon.power = photon.power / maxPower * 3.0f;
         }
 
         // Check max bounces
@@ -469,16 +702,6 @@ void Application::tracePhotonToCompletion(AnimatedPhoton &photon)
         {
             photon.isActive = false;
             break;
-        }
-
-        // Modulate power by surface color
-        photon.power = photon.power * collision.surfaceColor / survivalProbability;
-
-        // Clamp power
-        float maxPower = fmaxf(fmaxf(photon.power.x, photon.power.y), photon.power.z);
-        if (maxPower > 3.0f)
-        {
-            photon.power = photon.power / maxPower * 3.0f;
         }
 
         // Generate new diffuse direction
@@ -531,6 +754,9 @@ void Application::emitPhoton()
         photon.power = make_float3(1.0f, 1.0f, 1.0f); // Default white
     }
 
+    // arrivalPower starts the same as power (the initial emission power)
+    photon.arrivalPower = photon.power;
+
     // Set velocity based on direction and speed
     photon.velocity = photon.direction * photonSpeed;
     photon.isActive = true;
@@ -578,8 +804,8 @@ float3 Application::sampleCosineHemisphere(const float3 &normal)
 
 void Application::updatePhotons(float deltaTime)
 {
-    static int frameCount = 0;
-    bool shouldPrint = (frameCount++ % 120 == 0); // Print every 120 frames
+    // ANIMATED MODE: Simple visualization only - photons travel until first hit, then stop.
+    // For actual photon mapping with bounces, use INSTANT MODE (OptiX-based).
 
     for (size_t i = 0; i < animatedPhotons.size(); i++)
     {
@@ -588,95 +814,71 @@ void Application::updatePhotons(float deltaTime)
             continue;
 
         // Update position based on velocity
-        float3 oldPos = photon.position;
         photon.position = photon.position + photon.velocity * deltaTime;
 
-        if (shouldPrint && i == 0) // Print first active photon
+        // Simple boundary check - stop photon when it hits a wall
+        // This is for visualization only, not actual photon tracing
+        bool hitWall = false;
+        float3 hitColor = make_float3(0.8f, 0.8f, 0.8f);
+
+        // Check Cornell box boundaries
+        const float margin = 1.0f;
+
+        // Floor (y = 0)
+        if (photon.position.y <= margin)
         {
-            std::cout << "Photon #1: pos(" << photon.position.x << ", " << photon.position.y
-                      << ", " << photon.position.z << ") bounces=" << photon.bounceCount
-                      << " power=(" << photon.power.x << ", " << photon.power.y << ", " << photon.power.z << ")" << std::endl;
+            photon.position.y = margin;
+            hitWall = true;
+            hitColor = make_float3(0.8f, 0.8f, 0.8f); // white floor
+        }
+        // Ceiling
+        else if (photon.position.y >= Constants::Cornell::HEIGHT - margin)
+        {
+            photon.position.y = Constants::Cornell::HEIGHT - margin;
+            hitWall = true;
+            hitColor = make_float3(0.8f, 0.8f, 0.8f); // white ceiling
         }
 
-        // Check for collision using raycast from old position
-        CollisionResult collision = collisionDetector->checkPositionCollision(photon.position);
-
-        if (collision.hit)
+        // Left wall (x = 0) - RED
+        if (photon.position.x <= margin)
         {
-            // Store hit information
-            photon.position = collision.hitPoint;
-            photon.lastHitNormal = collision.normal;
-            photon.lastSurfaceColor = collision.surfaceColor;
+            photon.position.x = margin;
+            hitWall = true;
+            hitColor = make_float3(0.8f, 0.0f, 0.0f); // red
+        }
+        // Right wall - BLUE
+        else if (photon.position.x >= Constants::Cornell::WIDTH - margin)
+        {
+            photon.position.x = Constants::Cornell::WIDTH - margin;
+            hitWall = true;
+            hitColor = make_float3(0.0f, 0.0f, 0.8f); // blue
+        }
 
-            // Record this position in path history
-            photon.recordPathPoint();
+        // Back wall
+        if (photon.position.z >= Constants::Cornell::DEPTH - margin)
+        {
+            photon.position.z = Constants::Cornell::DEPTH - margin;
+            hitWall = true;
+            hitColor = make_float3(0.8f, 0.8f, 0.8f); // white back
+        }
+        // Front (camera side) - photon escapes
+        else if (photon.position.z <= margin)
+        {
+            photon.isActive = false;
+            photon.velocity = make_float3(0.0f, 0.0f, 0.0f);
+            continue;
+        }
 
-            std::cout << "Photon #" << (i + 1) << " hit surface at ("
-                      << collision.hitPoint.x << ", " << collision.hitPoint.y << ", " << collision.hitPoint.z << ")"
-                      << " surface color (" << collision.surfaceColor.x << ", " << collision.surfaceColor.y << ", " << collision.surfaceColor.z << ")"
-                      << " bounce #" << (photon.bounceCount + 1) << std::endl;
+        if (hitWall)
+        {
+            // Stop the photon at first hit - no CPU bouncing
+            // This is just for visualizing emission direction
+            photon.isActive = false;
+            photon.velocity = make_float3(0.0f, 0.0f, 0.0f);
+            photon.lastSurfaceColor = hitColor;
 
-            // Store photon in map AFTER first bounce (bounceCount > 0)
-            // This follows Jensen's algorithm - we don't store direct illumination
-            if (photon.bounceCount > 0)
-            {
-                Photon storedPhoton(
-                    collision.hitPoint,
-                    photon.power,
-                    photon.direction // Incident direction before bounce
-                );
-                photonMap.push_back(storedPhoton);
-
-                std::cout << "  -> Stored in photon map (total: " << photonMap.size() << ")" << std::endl;
-            }
-
-            // Russian Roulette: decide if photon survives
-            float survivalProbability = collision.diffuseProb;
-            float randomValue = uniformDist(rng);
-
-            if (randomValue > survivalProbability)
-            {
-                // Absorbed! Photon terminates
-                photon.isActive = false;
-                photon.wasAbsorbed = true;
-                photon.velocity = make_float3(0.0f, 0.0f, 0.0f);
-
-                std::cout << "  -> ABSORBED by Russian Roulette (rand=" << randomValue
-                          << " > prob=" << survivalProbability << ")" << std::endl;
-                continue;
-            }
-
-            // Photon survives - check max bounces
-            photon.bounceCount++;
-            if (photon.bounceCount >= photon.maxBounces)
-            {
-                photon.isActive = false;
-                photon.velocity = make_float3(0.0f, 0.0f, 0.0f);
-
-                std::cout << "  -> Terminated (max bounces reached)" << std::endl;
-                continue;
-            }
-
-            // Modulate power by surface color (color bleeding effect)
-            // Divide by survival probability to maintain unbiased estimate
-            photon.power = photon.power * collision.surfaceColor / survivalProbability;
-
-            // Clamp power to prevent explosion (for visualization)
-            float maxPower = fmaxf(fmaxf(photon.power.x, photon.power.y), photon.power.z);
-            if (maxPower > 3.0f)
-            {
-                photon.power = photon.power / maxPower * 3.0f;
-            }
-
-            // Generate new diffuse direction (cosine-weighted hemisphere)
-            photon.direction = sampleCosineHemisphere(collision.normal);
-            photon.velocity = photon.direction * photonSpeed;
-
-            // Offset position slightly along normal to prevent self-intersection
-            photon.position = collision.hitPoint + collision.normal * 0.5f;
-
-            std::cout << "  -> BOUNCED! New direction (" << photon.direction.x << ", " << photon.direction.y << ", " << photon.direction.z << ")"
-                      << " new power (" << photon.power.x << ", " << photon.power.y << ", " << photon.power.z << ")" << std::endl;
+            // First hit = direct illumination, photon disappears (not stored)
+            // For actual photon mapping with indirect bounces, use instant mode (OptiX)
         }
     }
 }

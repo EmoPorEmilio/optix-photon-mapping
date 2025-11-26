@@ -26,7 +26,7 @@ static __forceinline__ __device__ bool refract_dir(const float3 &I, const float3
     return true;
 }
 
-// Helper to store photon
+// Helper to store photon in global photon map
 __device__ void store_photon(const float3 &hit_point, const float3 &incident_dir, const float3 &throughput)
 {
     unsigned int stored_idx = atomicAdd((unsigned int *)params.photon_counter, 1u);
@@ -42,6 +42,26 @@ __device__ void store_photon(const float3 &hit_point, const float3 &incident_dir
         params.photons_out[stored_idx] = photon;
     }
 }
+
+// Helper to store caustic photon (previous hit was specular/transmissive)
+__device__ void store_caustic_photon(const float3 &hit_point, const float3 &incident_dir, const float3 &throughput)
+{
+    unsigned int stored_idx = atomicAdd((unsigned int *)params.caustic_photon_counter, 1u);
+
+    if (stored_idx < params.num_photons)
+    {
+        Photon photon;
+        photon.position = hit_point;
+        photon.power = throughput;
+        photon.incidentDir = normalize(incident_dir);
+        photon.flag = 1; // Mark as caustic
+
+        params.caustic_photons_out[stored_idx] = photon;
+    }
+}
+
+// Payload bit layout for tracking:
+// Payload 9: bits 0-29 = depth, bit 30 = insideFlag, bit 31 = prevWasSpecular (S or T hit)
 
 extern "C" __global__ void __closesthit__photon_hit()
 {
@@ -62,9 +82,10 @@ extern "C" __global__ void __closesthit__photon_hit()
     float3 throughput = make_float3(__uint_as_float(optixGetPayload_0()),
                                     __uint_as_float(optixGetPayload_1()),
                                     __uint_as_float(optixGetPayload_2()));
-    unsigned int packedDepth = optixGetPayload_9();
-    unsigned int depth = packedDepth & 0x7fffffffu;
-    unsigned int insideFlag = (packedDepth >> 31) & 0x1u; // 1 if currently inside a refractive object
+    unsigned int packedState = optixGetPayload_9();
+    unsigned int depth = packedState & 0x3fffffffu;           // bits 0-29
+    unsigned int insideFlag = (packedState >> 30) & 0x1u;      // bit 30
+    unsigned int prevWasSpecular = (packedState >> 31) & 0x1u; // bit 31: was previous hit S or T?
     unsigned int photon_idx = optixGetPayload_10();
 
     // Look up material for this triangle.
@@ -78,26 +99,36 @@ extern "C" __global__ void __closesthit__photon_hit()
         mat.diffuseProb = 0.5f;
     }
 
-    // Store photon only if it has bounced at least once AND is hitting a diffuse surface.
-    if (depth > 0 && mat.type == MATERIAL_DIFFUSE)
-    {
-        store_photon(hit_point, incident_dir, throughput);
-    }
-
     // RNG state seeded from photon index and depth.
     unsigned int rngState = photon_idx * 747796405u + depth * 2891336453u;
 
-    // For this simple example, walls are diffuse and use Russian roulette with 50% continue probability.
+    // For diffuse surfaces, apply Russian roulette and potentially store photon
     if (mat.type == MATERIAL_DIFFUSE)
     {
         float xi = ph_rand(rngState);
+
+        // Store photon BEFORE Russian roulette decision if it has bounced at least once
+        // This captures the incoming flux (Jensen's algorithm - skip direct illumination)
+        if (depth > 0)
+        {
+            // If previous hit was specular/transmissive, this is a CAUSTIC photon
+            if (prevWasSpecular)
+            {
+                store_caustic_photon(hit_point, incident_dir, throughput);
+            }
+            else
+            {
+                store_photon(hit_point, incident_dir, throughput);
+            }
+        }
+
         if (xi >= mat.diffuseProb)
         {
             optixSetPayload_11(0u); // absorbed
             return;
         }
 
-        // Update throughput with diffuse albedo.
+        // Update throughput with diffuse albedo for the NEXT bounce.
         throughput *= mat.albedo;
 
         // Sample new diffuse direction over hemisphere around the normal.
@@ -122,6 +153,10 @@ extern "C" __global__ void __closesthit__photon_hit()
         const float eps = 1e-3f;
         float3 new_origin = hit_point + new_dir * eps;
 
+        // Increment depth, clear prevWasSpecular (we just hit diffuse)
+        depth++;
+        prevWasSpecular = 0u;
+
         // Write updated state back to payload.
         optixSetPayload_0(__float_as_uint(throughput.x));
         optixSetPayload_1(__float_as_uint(throughput.y));
@@ -132,9 +167,9 @@ extern "C" __global__ void __closesthit__photon_hit()
         optixSetPayload_6(__float_as_uint(new_dir.x));
         optixSetPayload_7(__float_as_uint(new_dir.y));
         optixSetPayload_8(__float_as_uint(new_dir.z));
-        // Pack depth and insideFlag back into payload 9.
-        unsigned int newPackedDepth = (insideFlag << 31) | (depth & 0x7fffffffu);
-        optixSetPayload_9(newPackedDepth);
+        // Pack state back: depth | insideFlag | prevWasSpecular
+        unsigned int newPackedState = (prevWasSpecular << 31) | (insideFlag << 30) | (depth & 0x3fffffffu);
+        optixSetPayload_9(newPackedState);
         optixSetPayload_10(photon_idx);
         optixSetPayload_11(1u); // continue
         return;
@@ -162,20 +197,16 @@ extern "C" __global__ void __closesthit__photon_sphere_hit()
                                     __uint_as_float(optixGetPayload_1()),
                                     __uint_as_float(optixGetPayload_2()));
 
-    unsigned int packedDepth = optixGetPayload_9();
-    unsigned int depth = packedDepth & 0x7fffffffu;
-    unsigned int insideFlag = (packedDepth >> 31) & 0x1u; // 1 if inside glass
+    unsigned int packedState = optixGetPayload_9();
+    unsigned int depth = packedState & 0x3fffffffu;           // bits 0-29
+    unsigned int insideFlag = (packedState >> 30) & 0x1u;      // bit 30
+    // prevWasSpecular not used here - we're hitting a sphere
     unsigned int photon_idx = optixGetPayload_10();
 
     // Look up material for this sphere.
     Material mat = params.sphere_materials[prim_idx];
 
-    // Store photon only if it has bounced at least once AND is hitting a diffuse surface.
-    // (Spheres are currently only specular/transmissive, so this effectively disables storage on them, which is correct)
-    if (depth > 0 && mat.type == MATERIAL_DIFFUSE)
-    {
-        store_photon(hit_point, incident_dir, throughput);
-    }
+    // Spheres are specular/transmissive - NO storage on them (photons pass through or reflect)
 
     // Prepare next bounce.
     depth++;
@@ -186,6 +217,7 @@ extern "C" __global__ void __closesthit__photon_sphere_hit()
     }
 
     float3 new_dir;
+    unsigned int prevWasSpecular = 1u; // This hit IS specular/transmissive
 
     if (mat.type == MATERIAL_TRANSMISSIVE)
     {
@@ -218,13 +250,12 @@ extern "C" __global__ void __closesthit__photon_sphere_hit()
             insideFlag = 1u - insideFlag;
         }
 
-        throughput *= mat.albedo * mat.transmissiveCoeff;
+        // NO color modulation for transmissive - light passes through unchanged
         new_dir = normalize(refr);
     }
     else if (mat.type == MATERIAL_SPECULAR)
     {
-        // Perfect specular reflection: keep throughput (optionally scale by albedo).
-        throughput *= mat.albedo;
+        // Perfect specular reflection: NO color modulation
         new_dir = normalize(reflect_dir(incident_dir, normal));
         // Reflection does not change medium, so insideFlag stays the same.
     }
@@ -247,9 +278,9 @@ extern "C" __global__ void __closesthit__photon_sphere_hit()
     optixSetPayload_6(__float_as_uint(new_dir.x));
     optixSetPayload_7(__float_as_uint(new_dir.y));
     optixSetPayload_8(__float_as_uint(new_dir.z));
-    // Pack depth and insideFlag back into payload 9.
-    unsigned int newPackedDepth = (insideFlag << 31) | (depth & 0x7fffffffu);
-    optixSetPayload_9(newPackedDepth);
+    // Pack state back: prevWasSpecular | insideFlag | depth
+    unsigned int newPackedState = (prevWasSpecular << 31) | (insideFlag << 30) | (depth & 0x3fffffffu);
+    optixSetPayload_9(newPackedState);
     optixSetPayload_10(photon_idx);
     optixSetPayload_11(1u);
 }

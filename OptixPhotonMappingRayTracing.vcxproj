@@ -121,6 +121,11 @@
     <ClCompile Include="src\lighting\QuadLight.cpp" />
     <ClCompile Include="src\rendering\photon\PhotonMapper.cpp" />
     <ClCompile Include="src\rendering\raster\RasterRenderer.cpp" />
+    <ClCompile Include="src\rendering\direct\DirectLightRenderer.cpp" />
+    <ClCompile Include="src\rendering\indirect\IndirectLightRenderer.cpp" />
+    <ClCompile Include="src\rendering\caustic\CausticLightRenderer.cpp" />
+    <ClCompile Include="src\rendering\specular\SpecularLightRenderer.cpp" />
+    <ClCompile Include="src\rendering\combined\CombinedRenderer.cpp" />
     <ClCompile Include="src\ui\InputCommandManager.cpp" />
     <ClCompile Include="src\optix\OptixModule.cpp" />
     <ClCompile Include="src\optix\OptixContext.cpp" />
