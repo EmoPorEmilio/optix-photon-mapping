@@ -153,6 +153,11 @@ void CausticLightRenderer::uploadCausticMap(const std::vector<Photon>& caustics)
         cudaMalloc(&d_causticMap, causticCount * sizeof(Photon));
         cudaMemcpy(d_causticMap, caustics.data(), causticCount * sizeof(Photon), cudaMemcpyHostToDevice);
         std::cout << "CausticLightRenderer: Uploaded " << causticCount << " caustic photons" << std::endl;
+        causticKDTree.build(caustics);
+    }
+    else
+    {
+        causticKDTree.clear();
     }
 }
 
@@ -173,7 +178,7 @@ void CausticLightRenderer::render()
     }
     else
     {
-        optixManager->launchCausticLighting(width, height, *camera, d_causticMap, causticCount, gatherRadius, brightnessMultiplier, d_frameBuffer);
+        optixManager->launchCausticLighting(width, height, *camera, d_causticMap, causticCount, gatherRadius, brightnessMultiplier, causticKDTree.getDeviceTree(), d_frameBuffer);
         cudaMemcpy(h_frameBuffer.data(), d_frameBuffer, width * height * sizeof(float4), cudaMemcpyDeviceToHost);
     }
 

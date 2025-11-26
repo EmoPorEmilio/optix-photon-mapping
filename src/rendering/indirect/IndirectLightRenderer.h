@@ -11,6 +11,7 @@
 #include "../../optix/OptixManager.h"
 #include "../../ui/WindowManager.h"
 #include "../photon/Photon.h"
+#include "../photon/PhotonKDTree.h"
 
 class IndirectLightRenderer
 {
@@ -35,6 +36,7 @@ private:
     Photon* d_photonMap = nullptr;
     unsigned int photonCount = 0;
     float gatherRadius = 50.0f;  // Default gather radius
+    PhotonKDTree kdTree;
 
     bool initialized = false;
 

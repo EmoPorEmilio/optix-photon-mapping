@@ -12,6 +12,7 @@
 #include "../../optix/OptixManager.h"
 #include "../../ui/WindowManager.h"
 #include "../photon/Photon.h"
+#include "../photon/PhotonKDTree.h"
 
 class CombinedRenderer
 {
@@ -44,6 +45,8 @@ private:
     unsigned int globalPhotonCount = 0;
     Photon* d_causticPhotonMap = nullptr;
     unsigned int causticPhotonCount = 0;
+    PhotonKDTree globalKDTree;
+    PhotonKDTree causticKDTree;
 
     // Weights
     float directWeight = 1.0f;

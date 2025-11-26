@@ -21,6 +21,7 @@
 #include "../scene/Scene.h"
 #include "../lighting/QuadLight.h"
 #include "../rendering/photon/Photon.h"
+#include "../rendering/photon/PhotonKDTreeDevice.h"
 
 #include <iostream>
 #include <fstream>
@@ -161,13 +162,17 @@ public:
     bool createIndirectLightingPipeline();
     void launchIndirectLighting(unsigned int width, unsigned int height, const Camera &camera,
                                 const Photon *d_photon_map, unsigned int photon_count,
-                                float gather_radius, float brightness_multiplier, float4 *d_output);
+                                float gather_radius, float brightness_multiplier,
+                                const PhotonKDTreeDevice &kdtree,
+                                float4 *d_output);
 
     // Caustic lighting pipeline (specular/glossy spheres)
     bool createCausticLightingPipeline();
     void launchCausticLighting(unsigned int width, unsigned int height, const Camera &camera,
                                const Photon *d_caustic_map, unsigned int caustic_count,
-                               float gather_radius, float brightness_multiplier, float4 *d_output);
+                               float gather_radius, float brightness_multiplier,
+                               const PhotonKDTreeDevice &kdtree,
+                               float4 *d_output);
 
     // Specular lighting pipeline (reflection/refraction on spheres)
     bool createSpecularLightingPipeline();
@@ -185,7 +190,9 @@ public:
     };
     void launchSpecularLighting(unsigned int width, unsigned int height, const Camera &camera,
                                 const Photon *d_global_map, unsigned int global_count,
+                                const PhotonKDTreeDevice &global_kdtree,
                                 const Photon *d_caustic_map, unsigned int caustic_count,
+                                const PhotonKDTreeDevice &caustic_kdtree,
                                 const SpecularParams &spec_params, float4 *d_output);
 
     void render(unsigned int width, unsigned int height, const Camera &camera, unsigned char *output_buffer);

@@ -24,8 +24,8 @@ Application::Application()
 
 bool Application::initialize()
 {
-    // Load photon mapping configuration from JSON in the Debug folder.
-    PhotonMappingConfig pmc = ConfigLoader::load("bin/Debug/configuration.json");
+    // Load photon mapping configuration from XML in the Debug folder.
+    PhotonMappingConfig pmc = ConfigLoader::load("bin/Debug/configuration.xml");
     NUM_PHOTONS = pmc.max_photons;
     maxPhotons = pmc.max_photons;
     photonCollisionRadius = pmc.photon_collision_radius;

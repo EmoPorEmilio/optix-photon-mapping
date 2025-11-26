@@ -32,6 +32,11 @@ void SpecularLightRenderer::uploadGlobalPhotonMap(const std::vector<Photon>& pho
         cudaMalloc(&d_globalPhotonMap, globalPhotonCount * sizeof(Photon));
         cudaMemcpy(d_globalPhotonMap, photons.data(), globalPhotonCount * sizeof(Photon), cudaMemcpyHostToDevice);
         std::cout << "SpecularLightRenderer: Uploaded " << globalPhotonCount << " global photons" << std::endl;
+        globalKDTree.build(photons);
+    }
+    else
+    {
+        globalKDTree.clear();
     }
 }
 
@@ -43,6 +48,11 @@ void SpecularLightRenderer::uploadCausticPhotonMap(const std::vector<Photon>& ca
         cudaMalloc(&d_causticPhotonMap, causticPhotonCount * sizeof(Photon));
         cudaMemcpy(d_causticPhotonMap, caustics.data(), causticPhotonCount * sizeof(Photon), cudaMemcpyHostToDevice);
         std::cout << "SpecularLightRenderer: Uploaded " << causticPhotonCount << " caustic photons" << std::endl;
+        causticKDTree.build(caustics);
+    }
+    else
+    {
+        causticKDTree.clear();
     }
 }
 
@@ -175,8 +185,8 @@ void SpecularLightRenderer::render()
 
     // Launch OptiX specular lighting pass with photon maps for full scene lighting
     optixManager->launchSpecularLighting(width, height, *camera,
-                                         d_globalPhotonMap, globalPhotonCount,
-                                         d_causticPhotonMap, causticPhotonCount,
+                                         d_globalPhotonMap, globalPhotonCount, globalKDTree.getDeviceTree(),
+                                         d_causticPhotonMap, causticPhotonCount, causticKDTree.getDeviceTree(),
                                          specParams, d_frameBuffer);
 
     // Copy to CPU

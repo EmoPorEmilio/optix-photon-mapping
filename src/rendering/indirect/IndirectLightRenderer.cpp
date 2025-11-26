@@ -158,6 +158,11 @@ void IndirectLightRenderer::uploadPhotonMap(const std::vector<Photon>& photons)
         cudaMalloc(&d_photonMap, photonCount * sizeof(Photon));
         cudaMemcpy(d_photonMap, photons.data(), photonCount * sizeof(Photon), cudaMemcpyHostToDevice);
         std::cout << "IndirectLightRenderer: Uploaded " << photonCount << " photons" << std::endl;
+        kdTree.build(photons);
+    }
+    else
+    {
+        kdTree.clear();
     }
 }
 
@@ -180,7 +185,7 @@ void IndirectLightRenderer::render()
     else
     {
         // Launch OptiX indirect lighting pass
-        optixManager->launchIndirectLighting(width, height, *camera, d_photonMap, photonCount, gatherRadius, brightnessMultiplier, d_frameBuffer);
+        optixManager->launchIndirectLighting(width, height, *camera, d_photonMap, photonCount, gatherRadius, brightnessMultiplier, kdTree.getDeviceTree(), d_frameBuffer);
 
         // Copy to CPU
         cudaMemcpy(h_frameBuffer.data(), d_frameBuffer, width * height * sizeof(float4), cudaMemcpyDeviceToHost);

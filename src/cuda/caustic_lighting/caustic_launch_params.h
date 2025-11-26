@@ -4,18 +4,7 @@
 #include <sutil/vec_math.h>
 #include "../../scene/Material.h"
 #include "../../rendering/photon/Photon.h"
-
-// Forward declaration of kd-tree node for host/device compatibility
-struct PhotonKDNode;
-
-// kd-tree structure (host/device compatible)
-struct PhotonKDTree
-{
-    PhotonKDNode* nodes;
-    unsigned int num_nodes;
-    unsigned int max_depth;
-    bool valid;
-};
+#include "../../rendering/photon/PhotonKDTreeDevice.h"
 
 struct CausticLaunchParams
 {
@@ -41,7 +30,7 @@ struct CausticLaunchParams
     float brightness_multiplier;  // Configurable visibility multiplier
 
     // kd-tree for O(log n) caustic photon queries
-    PhotonKDTree caustic_kdtree;
+    PhotonKDTreeDevice caustic_kdtree;
 
     // For light source detection
     unsigned int quadLightStartIndex;

@@ -745,7 +745,9 @@ bool OptixManager::createIndirectLightingPipeline()
 
 void OptixManager::launchIndirectLighting(unsigned int width, unsigned int height, const Camera &camera,
                                           const Photon *d_photon_map, unsigned int photon_count,
-                                          float gather_radius, float brightness_multiplier, float4 *d_output)
+                                          float gather_radius, float brightness_multiplier,
+                                          const PhotonKDTreeDevice &kdtree,
+                                          float4 *d_output)
 {
     if (!indirect_pipeline)
     {
@@ -780,6 +782,7 @@ void OptixManager::launchIndirectLighting(unsigned int width, unsigned int heigh
     params.photon_count = photon_count;
     params.gather_radius = gather_radius;
     params.brightness_multiplier = brightness_multiplier;
+    params.kdtree = kdtree;
 
     // Initialize kd-tree as invalid (use linear fallback)
     params.kdtree.nodes = nullptr;
@@ -979,7 +982,9 @@ bool OptixManager::createCausticLightingPipeline()
 
 void OptixManager::launchCausticLighting(unsigned int width, unsigned int height, const Camera &camera,
                                          const Photon *d_caustic_map, unsigned int caustic_count,
-                                         float gather_radius, float brightness_multiplier, float4 *d_output)
+                                         float gather_radius, float brightness_multiplier,
+                                         const PhotonKDTreeDevice &kdtree,
+                                         float4 *d_output)
 {
     if (!caustic_pipeline)
     {
@@ -1010,6 +1015,7 @@ void OptixManager::launchCausticLighting(unsigned int width, unsigned int height
     params.caustic_photon_count = caustic_count;
     params.gather_radius = gather_radius;
     params.brightness_multiplier = brightness_multiplier;
+    params.caustic_kdtree = kdtree;
 
     // Initialize kd-tree as invalid (use linear fallback)
     params.caustic_kdtree.nodes = nullptr;
@@ -1209,7 +1215,9 @@ bool OptixManager::createSpecularLightingPipeline()
 
 void OptixManager::launchSpecularLighting(unsigned int width, unsigned int height, const Camera &camera,
                                           const Photon *d_global_map, unsigned int global_count,
+                                          const PhotonKDTreeDevice &global_kdtree,
                                           const Photon *d_caustic_map, unsigned int caustic_count,
+                                          const PhotonKDTreeDevice &caustic_kdtree,
                                           const SpecularParams &spec_params, float4 *d_output)
 {
     if (!specular_pipeline)
@@ -1244,6 +1252,8 @@ void OptixManager::launchSpecularLighting(unsigned int width, unsigned int heigh
     params.caustic_photon_map = const_cast<Photon *>(d_caustic_map);
     params.caustic_photon_count = caustic_count;
     params.gather_radius = spec_params.gather_radius;
+    params.global_kdtree = global_kdtree;
+    params.caustic_kdtree = caustic_kdtree;
 
     // Light info
     params.light_position = make_float3(278.0f, 548.8f - 1.0f, 279.6f);

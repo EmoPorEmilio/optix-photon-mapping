@@ -3,26 +3,51 @@
 #include <fstream>
 #include <sstream>
 #include <iostream>
+#include <algorithm>
+#include <cctype>
 
-// Very small helper to extract a numeric value from a JSON-like string by key.
-// This is not a full JSON parser, but sufficient for our controlled config file.
-template <typename T>
-static bool extractNumber(const std::string &text, const std::string &key, T &out)
+// Simple XML parsing helpers - not a full XML parser, but sufficient for our config file
+
+// Trim whitespace from both ends of a string
+static std::string trim(const std::string &s)
 {
-    const std::string pattern = "\"" + key + "\"";
-    size_t pos = text.find(pattern);
-    if (pos == std::string::npos)
+    size_t start = 0;
+    while (start < s.size() && std::isspace(static_cast<unsigned char>(s[start])))
+        ++start;
+    size_t end = s.size();
+    while (end > start && std::isspace(static_cast<unsigned char>(s[end - 1])))
+        --end;
+    return s.substr(start, end - start);
+}
+
+// Extract content between <tag>...</tag>
+static bool extractTagContent(const std::string &text, const std::string &tag, std::string &out)
+{
+    std::string openTag = "<" + tag + ">";
+    std::string closeTag = "</" + tag + ">";
+
+    size_t start = text.find(openTag);
+    if (start == std::string::npos)
         return false;
 
-    pos = text.find(':', pos);
-    if (pos == std::string::npos)
+    start += openTag.length();
+    size_t end = text.find(closeTag, start);
+    if (end == std::string::npos)
         return false;
 
-    ++pos; // move past ':'
-    while (pos < text.size() && (text[pos] == ' ' || text[pos] == '\t'))
-        ++pos;
+    out = trim(text.substr(start, end - start));
+    return true;
+}
 
-    std::stringstream ss(text.substr(pos));
+// Extract a numeric value from <tag>value</tag>
+template <typename T>
+static bool extractNumber(const std::string &text, const std::string &tag, T &out)
+{
+    std::string content;
+    if (!extractTagContent(text, tag, content))
+        return false;
+
+    std::stringstream ss(content);
     T value;
     ss >> value;
     if (ss.fail())
@@ -32,29 +57,25 @@ static bool extractNumber(const std::string &text, const std::string &key, T &ou
     return true;
 }
 
-// Helper to extract a boolean value like: "enabled": true
-static bool extractBool(const std::string &text, const std::string &key, bool &out)
+// Extract a boolean value from <tag>true/false</tag>
+static bool extractBool(const std::string &text, const std::string &tag, bool &out)
 {
-    const std::string pattern = "\"" + key + "\"";
-    size_t pos = text.find(pattern);
-    if (pos == std::string::npos)
+    std::string content;
+    if (!extractTagContent(text, tag, content))
         return false;
 
-    pos = text.find(':', pos);
-    if (pos == std::string::npos)
-        return false;
+    // Convert to lowercase for comparison
+    std::string lower = content;
+    std::transform(lower.begin(), lower.end(), lower.begin(),
+                   [](unsigned char c)
+                   { return std::tolower(c); });
 
-    ++pos; // move past ':'
-    while (pos < text.size() && (text[pos] == ' ' || text[pos] == '\t'))
-        ++pos;
-
-    // Check for true/false
-    if (text.substr(pos, 4) == "true")
+    if (lower == "true" || lower == "1")
     {
         out = true;
         return true;
     }
-    else if (text.substr(pos, 5) == "false")
+    else if (lower == "false" || lower == "0")
     {
         out = false;
         return true;
@@ -62,27 +83,84 @@ static bool extractBool(const std::string &text, const std::string &key, bool &o
     return false;
 }
 
-// Helper to extract a float3 array like: "eye": [x, y, z]
-static bool extractFloat3(const std::string &text, const std::string &key, float3 &out)
+// Extract a float3 from an element with x, y, z or r, g, b attributes
+// e.g., <eye x="1.0" y="2.0" z="3.0"/> or <color r="0.5" g="0.5" b="0.5"/>
+static bool extractFloat3Attr(const std::string &text, const std::string &tag, float3 &out, bool rgb = false)
 {
-    const std::string pattern = "\"" + key + "\"";
+    // Find the tag opening
+    std::string pattern = "<" + tag;
     size_t pos = text.find(pattern);
     if (pos == std::string::npos)
         return false;
 
-    pos = text.find('[', pos);
-    if (pos == std::string::npos)
+    // Find the end of this element (either /> or >)
+    size_t endPos = text.find(">", pos);
+    if (endPos == std::string::npos)
         return false;
 
-    ++pos; // move past '['
-    std::stringstream ss(text.substr(pos));
+    std::string element = text.substr(pos, endPos - pos + 1);
+
+    const char *attr1 = rgb ? "r" : "x";
+    const char *attr2 = rgb ? "g" : "y";
+    const char *attr3 = rgb ? "b" : "z";
+
+    auto extractAttr = [&element](const char *attr, float &val) -> bool
+    {
+        std::string attrPattern = std::string(attr) + "=\"";
+        size_t attrPos = element.find(attrPattern);
+        if (attrPos == std::string::npos)
+            return false;
+
+        attrPos += attrPattern.length();
+        size_t attrEnd = element.find('"', attrPos);
+        if (attrEnd == std::string::npos)
+            return false;
+
+        std::string valStr = element.substr(attrPos, attrEnd - attrPos);
+        std::stringstream ss(valStr);
+        ss >> val;
+        return !ss.fail();
+    };
+
     float x, y, z;
-    char comma;
-    ss >> x >> comma >> y >> comma >> z;
-    if (ss.fail())
+    if (!extractAttr(attr1, x) || !extractAttr(attr2, y) || !extractAttr(attr3, z))
         return false;
 
     out = make_float3(x, y, z);
+    return true;
+}
+
+// Extract string content from <tag>text</tag>
+static bool extractString(const std::string &text, const std::string &tag, std::string &out)
+{
+    return extractTagContent(text, tag, out);
+}
+
+// Extract attribute value from an element
+static bool extractAttribute(const std::string &text, const std::string &tag, const std::string &attr, std::string &out)
+{
+    std::string pattern = "<" + tag;
+    size_t pos = text.find(pattern);
+    if (pos == std::string::npos)
+        return false;
+
+    size_t endPos = text.find(">", pos);
+    if (endPos == std::string::npos)
+        return false;
+
+    std::string element = text.substr(pos, endPos - pos + 1);
+
+    std::string attrPattern = attr + "=\"";
+    size_t attrPos = element.find(attrPattern);
+    if (attrPos == std::string::npos)
+        return false;
+
+    attrPos += attrPattern.length();
+    size_t attrEnd = element.find('"', attrPos);
+    if (attrEnd == std::string::npos)
+        return false;
+
+    out = element.substr(attrPos, attrEnd - attrPos);
     return true;
 }
 
@@ -94,7 +172,7 @@ PhotonMappingConfig ConfigLoader::load(const std::string &path)
     if (!file)
     {
         std::cerr << "ConfigLoader: could not open configuration file: " << path
-                  << " – using default photon mapping parameters." << std::endl;
+                  << " - using default photon mapping parameters." << std::endl;
         return cfg;
     }
 
@@ -106,6 +184,7 @@ PhotonMappingConfig ConfigLoader::load(const std::string &path)
     float fval = 0.0f;
     bool bval = false;
 
+    // Basic photon mapping params
     if (extractNumber<unsigned int>(text, "max_photons", uval))
         cfg.max_photons = uval;
     if (extractNumber<float>(text, "photon_collision_radius", fval))
@@ -145,13 +224,12 @@ PhotonMappingConfig ConfigLoader::load(const std::string &path)
     if (extractNumber<float>(text, "glass_ior", fval))
         cfg.specular.glass_ior = fval;
     float3 glass_tint;
-    if (extractFloat3(text, "glass_tint", glass_tint))
+    if (extractFloat3Attr(text, "glass_tint", glass_tint, true))
         cfg.specular.glass_tint = glass_tint;
     if (extractNumber<float>(text, "mirror_reflectivity", fval))
         cfg.specular.mirror_reflectivity = fval;
     if (extractNumber<float>(text, "fresnel_min", fval))
         cfg.specular.fresnel_min = fval;
-    // Specular-specific brightness (unique keys to avoid conflicts)
     if (extractNumber<float>(text, "specular_indirect_brightness", fval))
         cfg.specular.indirect_brightness = fval;
     if (extractNumber<float>(text, "specular_caustic_brightness", fval))
@@ -159,111 +237,140 @@ PhotonMappingConfig ConfigLoader::load(const std::string &path)
     if (extractNumber<float>(text, "specular_ambient", fval))
         cfg.specular.ambient = fval;
 
-    // Weights configuration (in "weights" section)
-    // These use simple key names under the weights object
-    float direct_w, indirect_w, caustics_w, specular_w;
-    if (extractNumber<float>(text, "\"direct\"", direct_w))
-        cfg.weights.direct = direct_w;
-    if (extractNumber<float>(text, "\"indirect\"", indirect_w))
-        cfg.weights.indirect = indirect_w;
-    if (extractNumber<float>(text, "\"caustics\"", caustics_w))
-        cfg.weights.caustics = caustics_w;
-    if (extractNumber<float>(text, "\"specular\"", specular_w))
-        cfg.weights.specular = specular_w;
-
-    // Wall colors configuration
-    float3 wallColor;
-    if (extractFloat3(text, "floor", wallColor))
-        cfg.walls.floor = wallColor;
-    if (extractFloat3(text, "ceiling", wallColor))
-        cfg.walls.ceiling = wallColor;
-    if (extractFloat3(text, "back", wallColor))
-        cfg.walls.back = wallColor;
-    if (extractFloat3(text, "left", wallColor))
-        cfg.walls.left = wallColor;
-    if (extractFloat3(text, "right", wallColor))
-        cfg.walls.right = wallColor;
-
-    // Optional camera configuration.
-    float3 eye, lookAt, up;
-    float fovVal = 0.0f;
-    bool haveEye = extractFloat3(text, "eye", eye);
-    bool haveLookAt = extractFloat3(text, "lookAt", lookAt);
-    bool haveUp = extractFloat3(text, "up", up);
-    bool haveFov = extractNumber<float>(text, "fov", fovVal);
-    if (haveEye && haveLookAt && haveUp)
+    // Weights configuration (inside <weights> block)
+    std::string weightsBlock;
+    if (extractTagContent(text, "weights", weightsBlock))
     {
-        cfg.camera.hasCamera = true;
-        cfg.camera.eye = eye;
-        cfg.camera.lookAt = lookAt;
-        cfg.camera.up = up;
-        if (haveFov)
-            cfg.camera.fov = fovVal;
+        float w;
+        if (extractNumber<float>(weightsBlock, "direct", w))
+            cfg.weights.direct = w;
+        if (extractNumber<float>(weightsBlock, "indirect", w))
+            cfg.weights.indirect = w;
+        if (extractNumber<float>(weightsBlock, "caustics", w))
+            cfg.weights.caustics = w;
+        if (extractNumber<float>(weightsBlock, "specular", w))
+            cfg.weights.specular = w;
     }
 
-    // Parse mesh objects - find all "type": "mesh" entries
-    size_t meshPos = 0;
-    while ((meshPos = text.find("\"type\"", meshPos)) != std::string::npos)
+    // Wall colors configuration
+    std::string wallsBlock;
+    if (extractTagContent(text, "walls", wallsBlock))
     {
-        // Check if this is a mesh type
-        size_t colonPos = text.find(':', meshPos);
-        if (colonPos == std::string::npos)
-            break;
+        float3 wallColor;
+        if (extractFloat3Attr(wallsBlock, "floor", wallColor, true))
+            cfg.walls.floor = wallColor;
+        if (extractFloat3Attr(wallsBlock, "ceiling", wallColor, true))
+            cfg.walls.ceiling = wallColor;
+        if (extractFloat3Attr(wallsBlock, "back", wallColor, true))
+            cfg.walls.back = wallColor;
+        if (extractFloat3Attr(wallsBlock, "left", wallColor, true))
+            cfg.walls.left = wallColor;
+        if (extractFloat3Attr(wallsBlock, "right", wallColor, true))
+            cfg.walls.right = wallColor;
+    }
 
-        size_t quoteStart = text.find('"', colonPos + 1);
-        size_t quoteEnd = text.find('"', quoteStart + 1);
-        if (quoteStart == std::string::npos || quoteEnd == std::string::npos)
-            break;
+    // Camera configuration
+    std::string cameraBlock;
+    if (extractTagContent(text, "camera", cameraBlock))
+    {
+        float3 eye, lookAt, up;
+        float fovVal = 0.0f;
+        bool haveEye = extractFloat3Attr(cameraBlock, "eye", eye, false);
+        bool haveLookAt = extractFloat3Attr(cameraBlock, "lookAt", lookAt, false);
+        bool haveUp = extractFloat3Attr(cameraBlock, "up", up, false);
+        bool haveFov = extractNumber<float>(cameraBlock, "fov", fovVal);
 
-        std::string typeValue = text.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
-
-        if (typeValue == "mesh")
+        if (haveEye && haveLookAt && haveUp)
         {
-            MeshObjectConfig mesh;
+            cfg.camera.hasCamera = true;
+            cfg.camera.eye = eye;
+            cfg.camera.lookAt = lookAt;
+            cfg.camera.up = up;
+            if (haveFov)
+                cfg.camera.fov = fovVal;
+        }
+    }
 
-            // Find the enclosing object block
-            size_t blockStart = text.rfind('{', meshPos);
-            size_t blockEnd = text.find('}', meshPos);
-            if (blockStart != std::string::npos && blockEnd != std::string::npos)
+    // Parse mesh objects - find all <object type="mesh"> entries
+    std::string objectsBlock;
+    if (extractTagContent(text, "objects", objectsBlock))
+    {
+        size_t searchPos = 0;
+        while (true)
+        {
+            // Find next <object tag
+            size_t objStart = objectsBlock.find("<object", searchPos);
+            if (objStart == std::string::npos)
+                break;
+
+            // Find closing </object> or />
+            size_t objEndTag = objectsBlock.find("</object>", objStart);
+            size_t objSelfClose = objectsBlock.find("/>", objStart);
+
+            size_t objEnd;
+            if (objEndTag != std::string::npos &&
+                (objSelfClose == std::string::npos || objEndTag < objSelfClose))
             {
-                std::string block = text.substr(blockStart, blockEnd - blockStart + 1);
+                objEnd = objEndTag + 9; // length of "</object>"
+            }
+            else if (objSelfClose != std::string::npos)
+            {
+                objEnd = objSelfClose + 2;
+            }
+            else
+            {
+                break;
+            }
+
+            std::string objBlock = objectsBlock.substr(objStart, objEnd - objStart);
+
+            // Check if this is a mesh type
+            std::string typeAttr;
+            if (extractAttribute(objBlock, "object", "type", typeAttr) && typeAttr == "mesh")
+            {
+                MeshObjectConfig mesh;
 
                 // Extract path
-                size_t pathPos = block.find("\"path\"");
-                if (pathPos != std::string::npos)
-                {
-                    size_t pathColonPos = block.find(':', pathPos);
-                    size_t pathQuoteStart = block.find('"', pathColonPos + 1);
-                    size_t pathQuoteEnd = block.find('"', pathQuoteStart + 1);
-                    if (pathQuoteStart != std::string::npos && pathQuoteEnd != std::string::npos)
-                    {
-                        mesh.path = block.substr(pathQuoteStart + 1, pathQuoteEnd - pathQuoteStart - 1);
-                    }
-                }
+                extractString(objBlock, "path", mesh.path);
 
                 // Extract position
                 float3 pos;
-                if (extractFloat3(block, "position", pos))
+                if (extractFloat3Attr(objBlock, "position", pos, false))
                     mesh.position = pos;
 
                 // Extract scale
                 float scaleVal;
-                if (extractNumber<float>(block, "scale", scaleVal))
+                if (extractNumber<float>(objBlock, "scale", scaleVal))
                     mesh.scale = scaleVal;
 
-                // Extract color from material
-                float3 col;
-                if (extractFloat3(block, "color", col))
-                    mesh.color = col;
+                // Extract material type and color
+                std::string materialBlock;
+                if (extractTagContent(objBlock, "material", materialBlock))
+                {
+                    // Extract type attribute from material tag
+                    std::string matType;
+                    if (extractAttribute(objBlock, "material", "type", matType))
+                        mesh.materialType = matType;
+
+                    // Extract color
+                    float3 col;
+                    if (extractFloat3Attr(materialBlock, "color", col, true))
+                        mesh.color = col;
+
+                    // Extract IOR
+                    float iorVal;
+                    if (extractNumber<float>(materialBlock, "ior", iorVal))
+                        mesh.ior = iorVal;
+                }
 
                 if (!mesh.path.empty())
                 {
                     cfg.meshes.push_back(mesh);
                 }
             }
-        }
 
-        meshPos = quoteEnd + 1;
+            searchPos = objEnd;
+        }
     }
 
     std::cout << "ConfigLoader: loaded photon mapping config from " << path << std::endl;
@@ -282,7 +389,8 @@ PhotonMappingConfig ConfigLoader::load(const std::string &path)
               << ", caustics=" << cfg.weights.caustics
               << ", specular=" << cfg.weights.specular << std::endl;
     std::cout << "  walls: left=(" << cfg.walls.left.x << "," << cfg.walls.left.y << "," << cfg.walls.left.z << ")"
-              << ", right=(" << cfg.walls.right.x << "," << cfg.walls.right.y << "," << cfg.walls.right.z << ")" << std::endl;
+              << ", right=(" << cfg.walls.right.x << "," << cfg.walls.right.y << "," << cfg.walls.right.z << ")"
+              << std::endl;
     std::cout << "  meshes: " << cfg.meshes.size() << " mesh object(s)" << std::endl;
     for (const auto &m : cfg.meshes)
     {

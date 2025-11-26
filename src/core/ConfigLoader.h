@@ -4,7 +4,7 @@
 #include <vector>
 #include <sutil/vec_math.h>
 
-// Simple camera configuration read from JSON.
+// Simple camera configuration read from XML.
 struct CameraConfig
 {
     bool hasCamera = false;
@@ -83,7 +83,7 @@ struct MeshObjectConfig
     float ior = 1.5f;
 };
 
-// Simple configuration loader for photon mapping parameters from a JSON file.
+// Simple configuration loader for photon mapping parameters from an XML file.
 struct PhotonMappingConfig
 {
     unsigned int max_photons = 100000;
@@ -103,7 +103,7 @@ struct PhotonMappingConfig
 class ConfigLoader
 {
 public:
-    // Loads configuration from the given JSON file.
+    // Loads configuration from the given XML file.
     // On failure, returns a config filled with default values.
     static PhotonMappingConfig load(const std::string &path);
 };

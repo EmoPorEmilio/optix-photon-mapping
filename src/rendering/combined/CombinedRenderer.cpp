@@ -149,6 +149,9 @@ void CombinedRenderer::uploadGlobalPhotonMap(const std::vector<Photon>& photons)
     if (globalPhotonCount > 0) {
         cudaMalloc(&d_globalPhotonMap, globalPhotonCount * sizeof(Photon));
         cudaMemcpy(d_globalPhotonMap, photons.data(), globalPhotonCount * sizeof(Photon), cudaMemcpyHostToDevice);
+        globalKDTree.build(photons);
+    } else {
+        globalKDTree.clear();
     }
 }
 
@@ -159,6 +162,9 @@ void CombinedRenderer::uploadCausticPhotonMap(const std::vector<Photon>& caustic
     if (causticPhotonCount > 0) {
         cudaMalloc(&d_causticPhotonMap, causticPhotonCount * sizeof(Photon));
         cudaMemcpy(d_causticPhotonMap, caustics.data(), causticPhotonCount * sizeof(Photon), cudaMemcpyHostToDevice);
+        causticKDTree.build(caustics);
+    } else {
+        causticKDTree.clear();
     }
 }
 
@@ -232,18 +238,18 @@ void CombinedRenderer::render()
     optixManager->launchDirectLighting(width, height, *camera, directAmbient, directShadowAmbient, directIntensity, directAttenuation, d_directBuffer);
     
     if (globalPhotonCount > 0)
-        optixManager->launchIndirectLighting(width, height, *camera, d_globalPhotonMap, globalPhotonCount, gatherRadius, indirectBrightness, d_indirectBuffer);
+        optixManager->launchIndirectLighting(width, height, *camera, d_globalPhotonMap, globalPhotonCount, gatherRadius, indirectBrightness, globalKDTree.getDeviceTree(), d_indirectBuffer);
     else
         cudaMemset(d_indirectBuffer, 0, width * height * sizeof(float4));
 
     if (causticPhotonCount > 0)
-        optixManager->launchCausticLighting(width, height, *camera, d_causticPhotonMap, causticPhotonCount, gatherRadius * 0.5f, causticBrightness, d_causticBuffer);
+        optixManager->launchCausticLighting(width, height, *camera, d_causticPhotonMap, causticPhotonCount, gatherRadius * 0.5f, causticBrightness, causticKDTree.getDeviceTree(), d_causticBuffer);
     else
         cudaMemset(d_causticBuffer, 0, width * height * sizeof(float4));
 
     optixManager->launchSpecularLighting(width, height, *camera,
-                                         d_globalPhotonMap, globalPhotonCount,
-                                         d_causticPhotonMap, causticPhotonCount,
+                                         d_globalPhotonMap, globalPhotonCount, globalKDTree.getDeviceTree(),
+                                         d_causticPhotonMap, causticPhotonCount, causticKDTree.getDeviceTree(),
                                          specParams, d_specularBuffer);
 
     // Combine on CPU
@@ -279,18 +285,18 @@ void CombinedRenderer::exportToImage(const std::string& filename)
     optixManager->launchDirectLighting(width, height, *camera, directAmbient, directShadowAmbient, directIntensity, directAttenuation, d_directBuffer);
     
     if (globalPhotonCount > 0)
-        optixManager->launchIndirectLighting(width, height, *camera, d_globalPhotonMap, globalPhotonCount, gatherRadius, indirectBrightness, d_indirectBuffer);
+        optixManager->launchIndirectLighting(width, height, *camera, d_globalPhotonMap, globalPhotonCount, gatherRadius, indirectBrightness, globalKDTree.getDeviceTree(), d_indirectBuffer);
     else
         cudaMemset(d_indirectBuffer, 0, width * height * sizeof(float4));
 
     if (causticPhotonCount > 0)
-        optixManager->launchCausticLighting(width, height, *camera, d_causticPhotonMap, causticPhotonCount, gatherRadius * 0.5f, causticBrightness, d_causticBuffer);
+        optixManager->launchCausticLighting(width, height, *camera, d_causticPhotonMap, causticPhotonCount, gatherRadius * 0.5f, causticBrightness, causticKDTree.getDeviceTree(), d_causticBuffer);
     else
         cudaMemset(d_causticBuffer, 0, width * height * sizeof(float4));
 
     optixManager->launchSpecularLighting(width, height, *camera,
-                                         d_globalPhotonMap, globalPhotonCount,
-                                         d_causticPhotonMap, causticPhotonCount,
+                                         d_globalPhotonMap, globalPhotonCount, globalKDTree.getDeviceTree(),
+                                         d_causticPhotonMap, causticPhotonCount, causticKDTree.getDeviceTree(),
                                          specParams, d_specularBuffer);
 
     // Combine

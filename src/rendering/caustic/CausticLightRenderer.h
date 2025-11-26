@@ -11,6 +11,7 @@
 #include "../../optix/OptixManager.h"
 #include "../../ui/WindowManager.h"
 #include "../photon/Photon.h"
+#include "../photon/PhotonKDTree.h"
 
 class CausticLightRenderer
 {
@@ -34,6 +35,7 @@ private:
     // Caustic photon map on GPU
     Photon* d_causticMap = nullptr;
     unsigned int causticCount = 0;
+    PhotonKDTree causticKDTree;
     float gatherRadius = 50.0f;
 
     bool initialized = false;

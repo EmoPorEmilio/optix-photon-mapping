@@ -4,18 +4,7 @@
 #include <sutil/vec_math.h>
 #include "../../scene/Material.h"
 #include "../../rendering/photon/Photon.h"
-
-// Forward declaration of kd-tree node for host/device compatibility
-struct PhotonKDNode;
-
-// kd-tree structure (host/device compatible)
-struct PhotonKDTree
-{
-    PhotonKDNode* nodes;
-    unsigned int num_nodes;
-    unsigned int max_depth;
-    bool valid;
-};
+#include "../../rendering/photon/PhotonKDTreeDevice.h"
 
 struct SpecularLaunchParams
 {
@@ -43,8 +32,8 @@ struct SpecularLaunchParams
     float gather_radius;
 
     // kd-trees for O(log n) photon queries
-    PhotonKDTree global_kdtree;
-    PhotonKDTree caustic_kdtree;
+    PhotonKDTreeDevice global_kdtree;
+    PhotonKDTreeDevice caustic_kdtree;
 
     // Light
     float3 light_position;

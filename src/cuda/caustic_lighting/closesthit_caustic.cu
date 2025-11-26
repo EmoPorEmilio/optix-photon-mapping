@@ -1,71 +1,9 @@
 #include <optix.h>
 #include <sutil/vec_math.h>
 #include "caustic_launch_params.h"
+#include "../photon_gather.h"
 
 extern "C" __constant__ CausticLaunchParams params;
-
-// Gather caustic photons at a point using Jensen's radiance estimation
-// Caustics use the same formula but without albedo modulation since
-// the caustic represents specular-transmitted light arriving at a diffuse surface
-__device__ float3 gatherCausticPhotons(const float3& hit_point, const float3& normal)
-{
-    const float radius = params.gather_radius;
-    const float radius_sq = radius * radius;
-    const float inv_pi = 0.31830988618f;  // 1/π
-    
-    float3 flux_sum = make_float3(0.0f);
-    
-    // Linear search through caustic photon map
-    for (unsigned int i = 0; i < params.caustic_photon_count; i++)
-    {
-        Photon photon = params.caustic_photon_map[i];
-        
-        float3 diff = hit_point - photon.position;
-        float dist_sq = dot(diff, diff);
-        
-        if (dist_sq < radius_sq)
-        {
-            float incidentDot = dot(photon.incidentDir, normal);
-            if (incidentDot < 0.0f)
-            {
-                float weight = 1.0f - sqrtf(dist_sq) / radius;
-                flux_sum += photon.power * weight;
-            }
-        }
-    }
-    
-    // Jensen's radiance estimation with cone filter normalization
-    float cone_normalization = 3.0f;
-    float area = 3.14159265f * radius_sq;
-    float3 radiance = flux_sum * (cone_normalization / area) * inv_pi;
-    
-    // Apply brightness multiplier for display adjustment
-    radiance *= params.brightness_multiplier;
-    
-    return radiance;
-}
-
-// Compute geometric triangle normal from vertex positions
-__device__ float3 getTriangleNormal(const float3& ray_dir)
-{
-    float3 vertices[3];
-    optixGetTriangleVertexData(
-        optixGetGASTraversableHandle(),
-        optixGetPrimitiveIndex(),
-        optixGetSbtGASIndex(),
-        0.0f,
-        vertices
-    );
-
-    float3 edge1 = vertices[1] - vertices[0];
-    float3 edge2 = vertices[2] - vertices[0];
-    float3 normal = normalize(cross(edge1, edge2));
-
-    if (dot(normal, ray_dir) > 0.0f)
-        normal = -normal;
-
-    return normal;
-}
 
 // Walls/floor show caustic highlights
 extern "C" __global__ void __closesthit__caustic_triangle()
@@ -87,10 +25,17 @@ extern "C" __global__ void __closesthit__caustic_triangle()
     const float3 hit_point = ray_origin + t_hit * ray_dir;
     
     // Get surface normal
-    float3 normal = getTriangleNormal(ray_dir);
+    float3 normal = computeTriangleNormal(ray_dir);
     
-    // Gather caustic photons - these are the highlights!
-    float3 caustics = gatherCausticPhotons(hit_point, normal);
+    // Gather caustic photons - kd-tree accelerated when available
+    float3 caustics = gatherPhotonsRadiance(
+        hit_point,
+        normal,
+        params.caustic_photon_map,
+        params.caustic_photon_count,
+        params.caustic_kdtree,
+        params.gather_radius);
+    caustics *= params.brightness_multiplier;
     
     // Caustics are bright highlights on dark background
     float3 color = caustics;

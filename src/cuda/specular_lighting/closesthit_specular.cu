@@ -1,6 +1,7 @@
 #include <optix.h>
 #include <sutil/vec_math.h>
 #include "specular_launch_params.h"
+#include "../photon_gather.h"
 
 extern "C" __constant__ SpecularLaunchParams params;
 
@@ -76,44 +77,6 @@ __device__ float3 getTriangleNormal(const float3& ray_dir)
     return normal;
 }
 
-// Gather photons for indirect/caustic lighting using Jensen's radiance estimation
-// Returns radiance (not flux) with proper cone filter normalization
-__device__ float3 gatherPhotons(const float3& hit_point, const float3& normal, 
-                                 const Photon* photon_map, unsigned int count, float radius)
-{
-    if (count == 0 || photon_map == nullptr)
-        return make_float3(0.0f);
-    
-    float3 flux_sum = make_float3(0.0f);
-    float radius_sq = radius * radius;
-    const float inv_pi = 0.31830988618f;  // 1/π
-    
-    for (unsigned int i = 0; i < count; i++)
-    {
-        float3 diff = hit_point - photon_map[i].position;
-        float dist_sq = dot(diff, diff);
-        
-        if (dist_sq < radius_sq)
-        {
-            float incidentDot = dot(photon_map[i].incidentDir, normal);
-            if (incidentDot < 0.0f)
-            {
-                // Cone filter weight
-                float weight = 1.0f - sqrtf(dist_sq) / radius;
-                flux_sum += photon_map[i].power * weight;
-            }
-        }
-    }
-    
-    // Jensen's radiance estimation with cone filter normalization (factor of 3)
-    // and 1/π for diffuse BRDF
-    float cone_normalization = 3.0f;
-    float area = 3.14159265f * radius_sq;
-    float3 radiance = flux_sum * (cone_normalization / area) * inv_pi;
-    
-    return radiance;
-}
-
 // Compute direct lighting at a point
 __device__ float3 computeDirectLight(const float3& hit_point, const float3& normal, const float3& albedo)
 {
@@ -174,13 +137,23 @@ extern "C" __global__ void __closesthit__specular_triangle()
     color += computeDirectLight(hit_point, normal, albedo) * 2.0f;
     
     // Indirect (global photon map) - configurable brightness
-    float3 indirect = gatherPhotons(hit_point, normal, params.global_photon_map, 
-                                     params.global_photon_count, params.gather_radius);
+    float3 indirect = gatherPhotonsRadiance(
+        hit_point,
+        normal,
+        params.global_photon_map,
+        params.global_photon_count,
+        params.global_kdtree,
+        params.gather_radius);
     color += indirect * albedo * params.indirect_brightness;
     
     // Caustics - configurable brightness
-    float3 caustics = gatherPhotons(hit_point, normal, params.caustic_photon_map,
-                                     params.caustic_photon_count, params.gather_radius * 0.5f);
+    float3 caustics = gatherPhotonsRadiance(
+        hit_point,
+        normal,
+        params.caustic_photon_map,
+        params.caustic_photon_count,
+        params.caustic_kdtree,
+        params.gather_radius * 0.5f);
     color += caustics * params.caustic_brightness;
     
     // Configurable ambient for base visibility
