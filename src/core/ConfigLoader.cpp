@@ -303,23 +303,25 @@ PhotonMappingConfig ConfigLoader::load(const std::string &path)
             if (objStart == std::string::npos)
                 break;
 
-            // Find closing </object> or />
-            size_t objEndTag = objectsBlock.find("</object>", objStart);
-            size_t objSelfClose = objectsBlock.find("/>", objStart);
+            // Check if this is a self-closing <object .../> or has </object>
+            // First find the end of the opening tag
+            size_t tagEnd = objectsBlock.find(">", objStart);
+            if (tagEnd == std::string::npos)
+                break;
 
             size_t objEnd;
-            if (objEndTag != std::string::npos &&
-                (objSelfClose == std::string::npos || objEndTag < objSelfClose))
+            // Check if it's self-closing (ends with />)
+            if (tagEnd > 0 && objectsBlock[tagEnd - 1] == '/')
             {
-                objEnd = objEndTag + 9; // length of "</object>"
-            }
-            else if (objSelfClose != std::string::npos)
-            {
-                objEnd = objSelfClose + 2;
+                objEnd = tagEnd + 1;
             }
             else
             {
-                break;
+                // Look for matching </object>
+                size_t objEndTag = objectsBlock.find("</object>", tagEnd);
+                if (objEndTag == std::string::npos)
+                    break;
+                objEnd = objEndTag + 9; // length of "</object>"
             }
 
             std::string objBlock = objectsBlock.substr(objStart, objEnd - objStart);
