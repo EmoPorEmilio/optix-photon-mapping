@@ -45,23 +45,26 @@ __device__ float3 gatherCausticPhotons(const float3& hit_point, const float3& no
     return caustic;
 }
 
-// Compute normal based on which Cornell box wall was hit
-__device__ float3 getWallNormal(const float3& hit_point, const float3& ray_dir)
+// Compute geometric triangle normal from vertex positions
+__device__ float3 getTriangleNormal(const float3& ray_dir)
 {
-    const float eps = 5.0f;
-    
-    if (hit_point.y < eps) // Floor
-        return make_float3(0.0f, 1.0f, 0.0f);
-    if (hit_point.y > 548.8f - eps) // Ceiling
-        return make_float3(0.0f, -1.0f, 0.0f);
-    if (hit_point.x < eps) // Left wall (red)
-        return make_float3(1.0f, 0.0f, 0.0f);
-    if (hit_point.x > 556.0f - eps) // Right wall (blue)
-        return make_float3(-1.0f, 0.0f, 0.0f);
-    if (hit_point.z > 559.2f - eps) // Back wall
-        return make_float3(0.0f, 0.0f, -1.0f);
-    
-    return normalize(-ray_dir);
+    float3 vertices[3];
+    optixGetTriangleVertexData(
+        optixGetGASTraversableHandle(),
+        optixGetPrimitiveIndex(),
+        optixGetSbtGASIndex(),
+        0.0f,
+        vertices
+    );
+
+    float3 edge1 = vertices[1] - vertices[0];
+    float3 edge2 = vertices[2] - vertices[0];
+    float3 normal = normalize(cross(edge1, edge2));
+
+    if (dot(normal, ray_dir) > 0.0f)
+        normal = -normal;
+
+    return normal;
 }
 
 // Walls/floor show caustic highlights
@@ -83,8 +86,8 @@ extern "C" __global__ void __closesthit__caustic_triangle()
     const float t_hit = optixGetRayTmax();
     const float3 hit_point = ray_origin + t_hit * ray_dir;
     
-    // Get wall normal
-    float3 normal = getWallNormal(hit_point, ray_dir);
+    // Get surface normal
+    float3 normal = getTriangleNormal(ray_dir);
     
     // Gather caustic photons - these are the highlights!
     float3 caustics = gatherCausticPhotons(hit_point, normal);

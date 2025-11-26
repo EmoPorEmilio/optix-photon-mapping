@@ -18,18 +18,26 @@ __device__ bool refract(const float3& incident, const float3& normal, float eta,
     return true;
 }
 
-// Get wall normal based on position
-__device__ float3 getWallNormal(const float3& hit_point)
+// Compute geometric triangle normal from vertex positions
+__device__ float3 getTriangleNormal(const float3& ray_dir)
 {
-    const float eps = 5.0f;
-    
-    if (hit_point.y < eps) return make_float3(0.0f, 1.0f, 0.0f);      // Floor
-    if (hit_point.y > 548.8f - eps) return make_float3(0.0f, -1.0f, 0.0f);  // Ceiling
-    if (hit_point.x < eps) return make_float3(1.0f, 0.0f, 0.0f);      // Left wall
-    if (hit_point.x > 556.0f - eps) return make_float3(-1.0f, 0.0f, 0.0f); // Right wall
-    if (hit_point.z > 559.2f - eps) return make_float3(0.0f, 0.0f, -1.0f); // Back wall
-    
-    return make_float3(0.0f, 1.0f, 0.0f);
+    float3 vertices[3];
+    optixGetTriangleVertexData(
+        optixGetGASTraversableHandle(),
+        optixGetPrimitiveIndex(),
+        optixGetSbtGASIndex(),
+        0.0f,
+        vertices
+    );
+
+    float3 edge1 = vertices[1] - vertices[0];
+    float3 edge2 = vertices[2] - vertices[0];
+    float3 normal = normalize(cross(edge1, edge2));
+
+    if (dot(normal, ray_dir) > 0.0f)
+        normal = -normal;
+
+    return normal;
 }
 
 // Gather photons for indirect/caustic lighting
@@ -116,7 +124,7 @@ extern "C" __global__ void __closesthit__specular_triangle()
     const float3 hit_point = ray_origin + t_hit * ray_dir;
     
     // Get normal and albedo
-    float3 normal = getWallNormal(hit_point);
+    float3 normal = getTriangleNormal(ray_dir);
     float3 albedo = make_float3(0.8f, 0.8f, 0.8f);  // Default gray
     
     if (params.triangle_materials)

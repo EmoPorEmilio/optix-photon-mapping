@@ -76,8 +76,22 @@ extern "C" __global__ void __closesthit__photon_hit()
 
     const float3 hit_point = optixGetWorldRayOrigin() + optixGetRayTmax() * optixGetWorldRayDirection();
     const float3 incident_dir = optixGetWorldRayDirection();
-    // Approximate surface normal by flipping the incident direction.
-    const float3 normal = normalize(-incident_dir);
+    
+    // Compute geometric normal from triangle vertices
+    float3 vertices[3];
+    optixGetTriangleVertexData(
+        optixGetGASTraversableHandle(),
+        prim_idx,
+        optixGetSbtGASIndex(),
+        0.0f,
+        vertices
+    );
+    float3 edge1 = vertices[1] - vertices[0];
+    float3 edge2 = vertices[2] - vertices[0];
+    float3 normal = normalize(cross(edge1, edge2));
+    // Ensure normal faces toward the incoming ray
+    if (dot(normal, incident_dir) > 0.0f)
+        normal = -normal;
 
     float3 throughput = make_float3(__uint_as_float(optixGetPayload_0()),
                                     __uint_as_float(optixGetPayload_1()),

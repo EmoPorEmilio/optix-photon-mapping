@@ -335,6 +335,10 @@ bool Application::initialize()
     std::vector<OptixVertex> vertices = scene.exportTriangleVertices();
     std::vector<float3> colors = scene.exportTriangleColors();
 
+    // Set the light start index (must be done after exportTriangleVertices which computes it)
+    optixManager.setQuadLightStartIndex(scene.getQuadLightStartIndex());
+    std::cout << "quadLightStartIndex = " << scene.getQuadLightStartIndex() << " (total triangles before light)" << std::endl;
+
     if (!optixManager.buildTriangleGAS(vertices, colors))
     {
         std::cerr << "Failed to build triangle GAS" << std::endl;

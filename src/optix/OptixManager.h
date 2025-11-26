@@ -121,6 +121,9 @@ private:
     float3 sphere2_center = make_float3(368.0f, 103.5f, 351.0f);
     float sphere2_radius = 103.5f;
 
+    // Light geometry info
+    unsigned int quadLightStartIndex = 10;  // Default, should be updated from scene
+
     bool initialized = false;
 
 public:
@@ -139,6 +142,8 @@ public:
     bool buildTriangleGAS(const std::vector<OptixVertex> &vertices, const std::vector<float3> &colors);
     bool buildSphereGAS(float3 center1, float radius1, float3 center2, float radius2);
     bool buildIAS();
+
+    void setQuadLightStartIndex(unsigned int index) { quadLightStartIndex = index; }
 
     bool createPhotonPipeline();
     void launchPhotonPass(unsigned int num_photons, const QuadLight &light,

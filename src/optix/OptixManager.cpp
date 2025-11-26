@@ -533,9 +533,8 @@ void OptixManager::launchDirectLighting(unsigned int width, unsigned int height,
     params.light.halfHeight = 100.0f;
     params.light.intensity = make_float3(50.0f, 50.0f, 50.0f);
 
-    // quadLightStartIndex should be passed in or queried - for now use the actual count
-    // Cornell box: 5 walls * 2 triangles = 10 triangles, so light starts at index 10
-    params.quadLightStartIndex = 10;
+    // Use stored quadLightStartIndex (set from scene)
+    params.quadLightStartIndex = quadLightStartIndex;
 
     // Sphere geometry
     params.sphere1_center = sphere1_center;
@@ -778,7 +777,7 @@ void OptixManager::launchIndirectLighting(unsigned int width, unsigned int heigh
     params.gather_radius = gather_radius;
     params.brightness_multiplier = brightness_multiplier;
 
-    params.quadLightStartIndex = 10;
+    params.quadLightStartIndex = quadLightStartIndex;
 
     CUdeviceptr d_params;
     CUDA_CHECK(cudaMalloc((void **)&d_params, sizeof(IndirectLaunchParams)));
@@ -1002,7 +1001,7 @@ void OptixManager::launchCausticLighting(unsigned int width, unsigned int height
     params.gather_radius = gather_radius;
     params.brightness_multiplier = brightness_multiplier;
 
-    params.quadLightStartIndex = 10;
+    params.quadLightStartIndex = quadLightStartIndex;
 
     CUdeviceptr d_params;
     CUDA_CHECK(cudaMalloc((void **)&d_params, sizeof(CausticLaunchParams)));
@@ -1234,7 +1233,7 @@ void OptixManager::launchSpecularLighting(unsigned int width, unsigned int heigh
     params.light_position = make_float3(278.0f, 548.8f - 1.0f, 279.6f);
     params.light_intensity = make_float3(50.0f, 50.0f, 50.0f);
 
-    params.quadLightStartIndex = 10;
+    params.quadLightStartIndex = quadLightStartIndex;
 
     // Configurable specular parameters
     params.max_recursion_depth = spec_params.max_recursion_depth;

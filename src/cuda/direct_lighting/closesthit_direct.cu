@@ -11,69 +11,58 @@ __device__ __forceinline__ float frand(unsigned int &seed)
     return (seed & 0x00FFFFFF) / static_cast<float>(0x01000000);
 }
 
-// Check if ray intersects a sphere (for shadow testing)
-__device__ bool raySphereIntersect(const float3 &origin, const float3 &dir,
-                                   const float3 &center, float radius, float maxDist)
+// Trace shadow ray using OptiX to test occlusion by ALL geometry (triangles + spheres)
+__device__ bool traceOcclusionRay(const float3 &origin, const float3 &direction, float maxDist)
 {
-    float3 oc = origin - center;
-    float a = dot(dir, dir);
-    float b = 2.0f * dot(oc, dir);
-    float c = dot(oc, oc) - radius * radius;
-    float disc = b * b - 4.0f * a * c;
-
-    if (disc < 0.0f)
-        return false;
-
-    float sqrtD = sqrtf(disc);
-    float t = (-b - sqrtD) / (2.0f * a);
-    if (t > 0.001f && t < maxDist - 0.001f)
-        return true;
-
-    t = (-b + sqrtD) / (2.0f * a);
-    return (t > 0.001f && t < maxDist - 0.001f);
+    // Use same payload structure as primary rays for consistency
+    unsigned int p0 = 0u;
+    
+    // Trace shadow ray
+    // SBT layout: [0]=primary_tri, [1]=primary_sphere, [2]=shadow_tri, [3]=shadow_sphere
+    // SBT offset 2 = shadow hit groups start
+    // SBT stride 1 = same as primary rays (1 record per instance)
+    // Miss index 1 = shadow miss program
+    optixTrace(
+        params.handle,
+        origin,
+        direction,
+        0.1f,             // tmin - offset to avoid self-intersection
+        maxDist * 0.999f, // tmax - stop just before reaching the light (proportional)
+        0.0f,             // rayTime
+        OptixVisibilityMask(1),  // Match instance visibility mask (both instances use 1)
+        OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT | OPTIX_RAY_FLAG_DISABLE_ANYHIT,
+        2,                // SBT offset (shadow hit groups start at index 2)
+        1,                // SBT stride (1 record per instance, same as primary)
+        1,                // miss index (shadow miss)
+        p0                // payload 0 - will be set to 1 if occluded
+    );
+    
+    return p0 != 0u;
 }
 
-// Check if a point is occluded from the light by the spheres
-__device__ bool isOccludedBySpheres(const float3 &origin, const float3 &direction, float maxDist)
-{
-    if (raySphereIntersect(origin, direction, params.sphere1_center, params.sphere1_radius, maxDist))
-        return true;
-    if (raySphereIntersect(origin, direction, params.sphere2_center, params.sphere2_radius, maxDist))
-        return true;
-    return false;
-}
-
-// Compute triangle normal using barycentric interpolation from built-in attributes
+// Compute geometric triangle normal from vertex positions
 __device__ float3 computeTriangleNormal(const float3 &ray_dir)
 {
-    // Get barycentric coordinates from built-in function
-    const float2 barycentrics = optixGetTriangleBarycentrics();
+    // Get triangle vertex positions using OptiX built-in
+    float3 vertices[3];
+    optixGetTriangleVertexData(
+        optixGetGASTraversableHandle(),
+        optixGetPrimitiveIndex(),
+        optixGetSbtGASIndex(),
+        0.0f,  // motion time
+        vertices
+    );
 
-    // For a flat triangle, the normal is perpendicular to the face
-    // We can compute it from the ray direction and the fact that we hit from outside
-    // For now, use the geometric normal from OptixGetWorldRayDirection
-    // The normal should face opposite to the ray direction (toward the viewer)
+    // Compute geometric normal from triangle edges
+    float3 edge1 = vertices[1] - vertices[0];
+    float3 edge2 = vertices[2] - vertices[0];
+    float3 normal = normalize(cross(edge1, edge2));
 
-    // Simple heuristic: determine normal based on which wall was hit
-    // This works for axis-aligned Cornell box walls
-    const float3 hit_point = optixGetWorldRayOrigin() + optixGetRayTmax() * ray_dir;
+    // Ensure normal faces toward the ray origin (front-facing)
+    if (dot(normal, ray_dir) > 0.0f)
+        normal = -normal;
 
-    const float eps = 5.0f; // Tolerance for wall detection
-
-    // Check which wall we hit based on position
-    if (hit_point.y < eps) // Floor
-        return make_float3(0.0f, 1.0f, 0.0f);
-    if (hit_point.y > 548.8f - eps) // Ceiling
-        return make_float3(0.0f, -1.0f, 0.0f);
-    if (hit_point.x < eps) // Left wall (red)
-        return make_float3(1.0f, 0.0f, 0.0f);
-    if (hit_point.x > 556.0f - eps) // Right wall (blue)
-        return make_float3(-1.0f, 0.0f, 0.0f);
-    if (hit_point.z > 559.2f - eps) // Back wall
-        return make_float3(0.0f, 0.0f, -1.0f);
-
-    // Default: face toward camera
-    return normalize(-ray_dir);
+    return normal;
 }
 
 extern "C" __global__ void __closesthit__direct_triangle()
@@ -119,10 +108,10 @@ extern "C" __global__ void __closesthit__direct_triangle()
     float3 L = toLight / lightDist;
 
     // Offset the shadow ray origin along the normal to avoid self-intersection
-    float3 shadowOrigin = hit_point + normal * 0.01f;
+    float3 shadowOrigin = hit_point + normal * 0.1f;
 
-    // Check if occluded by spheres
-    bool occluded = isOccludedBySpheres(shadowOrigin, L, lightDist);
+    // Check if occluded by any geometry (triangles including bunny, and spheres)
+    bool occluded = traceOcclusionRay(shadowOrigin, L, lightDist);
 
     if (!occluded)
     {
@@ -169,8 +158,22 @@ extern "C" __global__ void __closesthit__direct_sphere()
     optixSetPayload_3(__float_as_uint(optixGetRayTmax()));
 }
 
-// Shadow ray hit - means something is blocking the light
+// Shadow ray hit on triangle - check if it's actual geometry, not the light
 extern "C" __global__ void __closesthit__shadow()
+{
+    // Don't count light geometry as occlusion
+    const unsigned int prim_idx = optixGetPrimitiveIndex();
+    if (prim_idx >= params.quadLightStartIndex)
+    {
+        // Hit the light geometry itself - not an occlusion
+        optixSetPayload_0(0u);
+        return;
+    }
+    optixSetPayload_0(1u); // Occluded by actual geometry
+}
+
+// Shadow ray hit on sphere - always blocks light
+extern "C" __global__ void __closesthit__shadow_sphere()
 {
     optixSetPayload_0(1u); // Occluded
 }
