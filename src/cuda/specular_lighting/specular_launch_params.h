@@ -5,6 +5,18 @@
 #include "../../scene/Material.h"
 #include "../../rendering/photon/Photon.h"
 
+// Forward declaration of kd-tree node for host/device compatibility
+struct PhotonKDNode;
+
+// kd-tree structure (host/device compatible)
+struct PhotonKDTree
+{
+    PhotonKDNode* nodes;
+    unsigned int num_nodes;
+    unsigned int max_depth;
+    bool valid;
+};
+
 struct SpecularLaunchParams
 {
     // Output
@@ -23,12 +35,16 @@ struct SpecularLaunchParams
     Material* triangle_materials;
     Material sphere_materials[2];
 
-    // Photon maps for full lighting
+    // Photon maps for full lighting (linear arrays for fallback)
     Photon* global_photon_map;
     unsigned int global_photon_count;
     Photon* caustic_photon_map;
     unsigned int caustic_photon_count;
     float gather_radius;
+
+    // kd-trees for O(log n) photon queries
+    PhotonKDTree global_kdtree;
+    PhotonKDTree caustic_kdtree;
 
     // Light
     float3 light_position;

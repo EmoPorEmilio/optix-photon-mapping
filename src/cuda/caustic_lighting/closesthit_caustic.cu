@@ -4,16 +4,18 @@
 
 extern "C" __constant__ CausticLaunchParams params;
 
-// Gather caustic photons at a point
+// Gather caustic photons at a point using Jensen's radiance estimation
+// Caustics use the same formula but without albedo modulation since
+// the caustic represents specular-transmitted light arriving at a diffuse surface
 __device__ float3 gatherCausticPhotons(const float3& hit_point, const float3& normal)
 {
-    float3 caustic = make_float3(0.0f);
-    
     const float radius = params.gather_radius;
     const float radius_sq = radius * radius;
+    const float inv_pi = 0.31830988618f;  // 1/π
     
-    unsigned int gathered = 0;
+    float3 flux_sum = make_float3(0.0f);
     
+    // Linear search through caustic photon map
     for (unsigned int i = 0; i < params.caustic_photon_count; i++)
     {
         Photon photon = params.caustic_photon_map[i];
@@ -23,26 +25,24 @@ __device__ float3 gatherCausticPhotons(const float3& hit_point, const float3& no
         
         if (dist_sq < radius_sq)
         {
-            // Check photon direction vs normal
             float incidentDot = dot(photon.incidentDir, normal);
             if (incidentDot < 0.0f)
             {
-                // Cone filter
                 float weight = 1.0f - sqrtf(dist_sq) / radius;
-                caustic += photon.power * weight;
-                gathered++;
+                flux_sum += photon.power * weight;
             }
         }
     }
     
-    if (gathered > 0)
-    {
-        float area = 3.14159265f * radius_sq;
-        caustic = caustic / area;
-        caustic *= params.brightness_multiplier;  // Configurable visibility
-    }
+    // Jensen's radiance estimation with cone filter normalization
+    float cone_normalization = 3.0f;
+    float area = 3.14159265f * radius_sq;
+    float3 radiance = flux_sum * (cone_normalization / area) * inv_pi;
     
-    return caustic;
+    // Apply brightness multiplier for display adjustment
+    radiance *= params.brightness_multiplier;
+    
+    return radiance;
 }
 
 // Compute geometric triangle normal from vertex positions

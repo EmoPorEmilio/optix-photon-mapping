@@ -27,54 +27,47 @@ __device__ float3 getTriangleNormal(const float3& ray_dir)
     return normal;
 }
 
-// Simple photon gathering - linear search through all photons
+// Photon gathering with correct Jensen radiance estimation formula
+// L(x, ω) = Σ(Φ_p * f_r(x, ω_p, ω) * K(d_p)) / (π * r²)
+// For diffuse surfaces: f_r = albedo / π
+// Cone filter K(d) = (1 - d/r) requires normalization factor of 3
 __device__ float3 gatherPhotons(const float3& hit_point, const float3& normal, const float3& albedo)
 {
-    float3 indirect = make_float3(0.0f);
-    
     const float radius = params.gather_radius;
     const float radius_sq = radius * radius;
+    const float inv_pi = 0.31830988618f;  // 1/π
     
-    unsigned int gathered = 0;
+    float3 flux_sum = make_float3(0.0f);
     
     // Linear search through photon map
     for (unsigned int i = 0; i < params.photon_count; i++)
     {
         Photon photon = params.photon_map[i];
         
-        // Distance check
         float3 diff = hit_point - photon.position;
         float dist_sq = dot(diff, diff);
         
         if (dist_sq < radius_sq)
         {
-            // Check if photon is on the same side of the surface
-            // (incident direction should be roughly opposite to normal)
             float incidentDot = dot(photon.incidentDir, normal);
-            if (incidentDot < 0.0f)  // Photon came from the correct side
+            if (incidentDot < 0.0f)
             {
-                // Cone filter weight (gives more weight to closer photons)
                 float weight = 1.0f - sqrtf(dist_sq) / radius;
-                
-                // Add photon contribution
-                indirect += photon.power * weight;
-                gathered++;
+                flux_sum += photon.power * weight;
             }
         }
     }
     
-    if (gathered > 0)
-    {
-        // Normalize by the disc area (Jensen's formula)
-        // The cone filter has a normalization factor of 3/(pi*r^2)
-        float area = 3.14159265f * radius_sq;
-        indirect = indirect * albedo / area;
-        
-        // Scale for visibility - configurable brightness multiplier
-        indirect *= params.brightness_multiplier;
-    }
+    // Jensen's radiance estimation formula
+    // L = (albedo / π) * (3 / (π * r²)) * Σ(Φ_p * K)
+    float cone_normalization = 3.0f;
+    float area = 3.14159265f * radius_sq;
+    float3 radiance = flux_sum * (cone_normalization / area) * albedo * inv_pi;
     
-    return indirect;
+    // Apply brightness multiplier for display adjustment
+    radiance *= params.brightness_multiplier;
+    
+    return radiance;
 }
 
 extern "C" __global__ void __closesthit__indirect_triangle()

@@ -197,7 +197,11 @@ void OptixManager::launchPhotonPass(unsigned int num_photons, const QuadLight &l
     params.handle = ias_handle;
     params.light = light;
     params.num_photons = num_photons;
+    
+    // Photon power: distribute light intensity across all photons
+    // Using original formula for compatibility with existing brightness tuning
     params.photon_power = light.getIntensity() / static_cast<float>(num_photons);
+    
     params.quadLightStartIndex = quadLightStartIndex;
     params.triangle_colors = reinterpret_cast<float3 *>(d_triangle_colors);
 
@@ -777,6 +781,12 @@ void OptixManager::launchIndirectLighting(unsigned int width, unsigned int heigh
     params.gather_radius = gather_radius;
     params.brightness_multiplier = brightness_multiplier;
 
+    // Initialize kd-tree as invalid (use linear fallback)
+    params.kdtree.nodes = nullptr;
+    params.kdtree.num_nodes = 0;
+    params.kdtree.max_depth = 0;
+    params.kdtree.valid = false;
+
     params.quadLightStartIndex = quadLightStartIndex;
 
     CUdeviceptr d_params;
@@ -1000,6 +1010,12 @@ void OptixManager::launchCausticLighting(unsigned int width, unsigned int height
     params.caustic_photon_count = caustic_count;
     params.gather_radius = gather_radius;
     params.brightness_multiplier = brightness_multiplier;
+
+    // Initialize kd-tree as invalid (use linear fallback)
+    params.caustic_kdtree.nodes = nullptr;
+    params.caustic_kdtree.num_nodes = 0;
+    params.caustic_kdtree.max_depth = 0;
+    params.caustic_kdtree.valid = false;
 
     params.quadLightStartIndex = quadLightStartIndex;
 
@@ -1234,6 +1250,17 @@ void OptixManager::launchSpecularLighting(unsigned int width, unsigned int heigh
     params.light_intensity = make_float3(50.0f, 50.0f, 50.0f);
 
     params.quadLightStartIndex = quadLightStartIndex;
+
+    // Initialize kd-trees as invalid (use linear fallback)
+    params.global_kdtree.nodes = nullptr;
+    params.global_kdtree.num_nodes = 0;
+    params.global_kdtree.max_depth = 0;
+    params.global_kdtree.valid = false;
+    
+    params.caustic_kdtree.nodes = nullptr;
+    params.caustic_kdtree.num_nodes = 0;
+    params.caustic_kdtree.max_depth = 0;
+    params.caustic_kdtree.valid = false;
 
     // Configurable specular parameters
     params.max_recursion_depth = spec_params.max_recursion_depth;

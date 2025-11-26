@@ -26,6 +26,18 @@ static __forceinline__ __device__ bool refract_dir(const float3 &I, const float3
     return true;
 }
 
+// Schlick's approximation for Fresnel reflectance (Jensen's algorithm)
+// R(θ) = R0 + (1 - R0) * (1 - cos(θ))^5
+// where R0 = ((n1 - n2) / (n1 + n2))^2
+static __forceinline__ __device__ float schlickFresnelPhoton(float cos_i, float n1, float n2)
+{
+    float r0 = (n1 - n2) / (n1 + n2);
+    r0 = r0 * r0;
+    float one_minus_cos = 1.0f - fabsf(cos_i);
+    float one_minus_cos5 = one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos;
+    return r0 + (1.0f - r0) * one_minus_cos5;
+}
+
 // Helper to store photon in global photon map
 __device__ void store_photon(const float3 &hit_point, const float3 &incident_dir, const float3 &throughput)
 {
@@ -143,7 +155,10 @@ extern "C" __global__ void __closesthit__photon_hit()
         }
 
         // Update throughput with diffuse albedo for the NEXT bounce.
-        throughput *= mat.albedo;
+        // Russian Roulette energy compensation: divide by survival probability
+        // to maintain unbiased energy transport (compensates for terminated paths).
+        // This is Jensen's standard approach from the photon mapping algorithm.
+        throughput *= mat.albedo / mat.diffuseProb;
 
         // Sample new diffuse direction over hemisphere around the normal.
         float u1 = ph_rand(rngState);
@@ -222,6 +237,9 @@ extern "C" __global__ void __closesthit__photon_sphere_hit()
 
     // Spheres are specular/transmissive - NO storage on them (photons pass through or reflect)
 
+    // RNG state for Fresnel stochastic selection
+    unsigned int rngState = photon_idx * 747796405u + depth * 2891336453u + 12345u;
+
     // Prepare next bounce.
     depth++;
     if (depth >= params.max_depth)
@@ -235,7 +253,9 @@ extern "C" __global__ void __closesthit__photon_sphere_hit()
 
     if (mat.type == MATERIAL_TRANSMISSIVE)
     {
-        // Refractive behavior with simple inside/outside tracking using insideFlag.
+        // Refractive behavior with Fresnel-weighted stochastic selection
+        // This is Jensen's approach: randomly choose reflection or refraction
+        // based on Fresnel probability for unbiased Monte Carlo sampling
         const float n_air = 1.0f;
         const float n_glass = 1.5f;
 
@@ -251,21 +271,33 @@ extern "C" __global__ void __closesthit__photon_sphere_hit()
             n2 = n_air;
         }
 
+        float cos_i = -dot(incident_dir, N);
         float eta = n1 / n2;
+        
+        // Compute Fresnel reflectance
+        float fresnel_r = schlickFresnelPhoton(cos_i, n1, n2);
+        
+        // Use RNG to stochastically choose between reflection and refraction
+        float xi = ph_rand(rngState);
+        
         float3 refr;
-        if (!refract_dir(incident_dir, N, eta, refr))
+        bool can_refract = refract_dir(incident_dir, N, eta, refr);
+        
+        if (!can_refract || xi < fresnel_r)
         {
-            // Total internal reflection fallback.
-            refr = reflect_dir(incident_dir, N);
+            // Reflect (either TIR or Fresnel-selected reflection)
+            new_dir = normalize(reflect_dir(incident_dir, N));
+            // insideFlag stays the same for reflection
         }
         else
         {
-            // Toggle medium only when we successfully refract.
+            // Refract (Fresnel-selected transmission)
+            new_dir = normalize(refr);
+            // Toggle medium when we refract
             insideFlag = 1u - insideFlag;
         }
 
         // NO color modulation for transmissive - light passes through unchanged
-        new_dir = normalize(refr);
     }
     else if (mat.type == MATERIAL_SPECULAR)
     {
