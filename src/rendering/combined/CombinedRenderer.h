@@ -51,6 +51,17 @@ private:
     float causticWeight = 1.0f;
     float specularWeight = 1.0f;
     float gatherRadius = 100.0f;
+    float indirectBrightness = 50000.0f;
+    float causticBrightness = 100000.0f;
+    
+    // Direct lighting params
+    float directAmbient = 0.03f;
+    float directShadowAmbient = 0.02f;
+    float directIntensity = 0.5f;
+    float directAttenuation = 0.00001f;
+    
+    // Specular params
+    OptixManager::SpecularParams specParams;
 
     bool initialized = false;
 
@@ -74,6 +85,11 @@ public:
     
     void setWeights(float direct, float indirect, float caustic, float specular);
     void setGatherRadius(float radius) { gatherRadius = radius; }
+    void setBrightnessMultipliers(float indirect, float caustic) { indirectBrightness = indirect; causticBrightness = caustic; }
+    void setDirectLightingParams(float amb, float shadowAmb, float inten, float atten) {
+        directAmbient = amb; directShadowAmbient = shadowAmb; directIntensity = inten; directAttenuation = atten;
+    }
+    void setSpecularParams(const OptixManager::SpecularParams& params) { specParams = params; }
 
     void render();
     void exportToImage(const std::string& filename);

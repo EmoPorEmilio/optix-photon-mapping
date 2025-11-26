@@ -44,6 +44,12 @@ struct DirectLaunchParams
     float3 sphere2_center;
     float sphere2_radius;
 
+    // Configurable lighting parameters
+    float ambient;              // Base ambient light
+    float shadow_ambient;       // Ambient in shadowed areas
+    float intensity_multiplier; // Direct lighting intensity
+    float attenuation_factor;   // Light falloff factor
+
     __host__ __device__ DirectLaunchParams() {}
 };
 

@@ -229,22 +229,22 @@ void CombinedRenderer::render()
     allocateBuffers(width, height);
 
     // Run all 4 pipelines
-    optixManager->launchDirectLighting(width, height, *camera, d_directBuffer);
+    optixManager->launchDirectLighting(width, height, *camera, directAmbient, directShadowAmbient, directIntensity, directAttenuation, d_directBuffer);
     
     if (globalPhotonCount > 0)
-        optixManager->launchIndirectLighting(width, height, *camera, d_globalPhotonMap, globalPhotonCount, gatherRadius, d_indirectBuffer);
+        optixManager->launchIndirectLighting(width, height, *camera, d_globalPhotonMap, globalPhotonCount, gatherRadius, indirectBrightness, d_indirectBuffer);
     else
         cudaMemset(d_indirectBuffer, 0, width * height * sizeof(float4));
 
     if (causticPhotonCount > 0)
-        optixManager->launchCausticLighting(width, height, *camera, d_causticPhotonMap, causticPhotonCount, gatherRadius * 0.5f, d_causticBuffer);
+        optixManager->launchCausticLighting(width, height, *camera, d_causticPhotonMap, causticPhotonCount, gatherRadius * 0.5f, causticBrightness, d_causticBuffer);
     else
         cudaMemset(d_causticBuffer, 0, width * height * sizeof(float4));
 
     optixManager->launchSpecularLighting(width, height, *camera,
                                          d_globalPhotonMap, globalPhotonCount,
                                          d_causticPhotonMap, causticPhotonCount,
-                                         gatherRadius, d_specularBuffer);
+                                         specParams, d_specularBuffer);
 
     // Combine on CPU
     combineBuffers(width, height);
@@ -276,22 +276,22 @@ void CombinedRenderer::exportToImage(const std::string& filename)
     std::cout << "Rendering combined image..." << std::endl;
 
     // Run all pipelines
-    optixManager->launchDirectLighting(width, height, *camera, d_directBuffer);
+    optixManager->launchDirectLighting(width, height, *camera, directAmbient, directShadowAmbient, directIntensity, directAttenuation, d_directBuffer);
     
     if (globalPhotonCount > 0)
-        optixManager->launchIndirectLighting(width, height, *camera, d_globalPhotonMap, globalPhotonCount, gatherRadius, d_indirectBuffer);
+        optixManager->launchIndirectLighting(width, height, *camera, d_globalPhotonMap, globalPhotonCount, gatherRadius, indirectBrightness, d_indirectBuffer);
     else
         cudaMemset(d_indirectBuffer, 0, width * height * sizeof(float4));
 
     if (causticPhotonCount > 0)
-        optixManager->launchCausticLighting(width, height, *camera, d_causticPhotonMap, causticPhotonCount, gatherRadius * 0.5f, d_causticBuffer);
+        optixManager->launchCausticLighting(width, height, *camera, d_causticPhotonMap, causticPhotonCount, gatherRadius * 0.5f, causticBrightness, d_causticBuffer);
     else
         cudaMemset(d_causticBuffer, 0, width * height * sizeof(float4));
 
     optixManager->launchSpecularLighting(width, height, *camera,
                                          d_globalPhotonMap, globalPhotonCount,
                                          d_causticPhotonMap, causticPhotonCount,
-                                         gatherRadius, d_specularBuffer);
+                                         specParams, d_specularBuffer);
 
     // Combine
     combineBuffers(width, height);

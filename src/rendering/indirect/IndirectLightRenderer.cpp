@@ -180,7 +180,7 @@ void IndirectLightRenderer::render()
     else
     {
         // Launch OptiX indirect lighting pass
-        optixManager->launchIndirectLighting(width, height, *camera, d_photonMap, photonCount, gatherRadius, d_frameBuffer);
+        optixManager->launchIndirectLighting(width, height, *camera, d_photonMap, photonCount, gatherRadius, brightnessMultiplier, d_frameBuffer);
 
         // Copy to CPU
         cudaMemcpy(h_frameBuffer.data(), d_frameBuffer, width * height * sizeof(float4), cudaMemcpyDeviceToHost);

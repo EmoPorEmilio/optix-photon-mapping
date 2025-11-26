@@ -207,8 +207,8 @@ void DirectLightRenderer::render()
     // Allocate GPU buffer if needed
     allocateBuffers(width, height);
 
-    // Launch OptiX direct lighting pass
-    optixManager->launchDirectLighting(width, height, *camera, d_frameBuffer);
+    // Launch OptiX direct lighting pass with configurable parameters
+    optixManager->launchDirectLighting(width, height, *camera, ambient, shadowAmbient, intensity, attenuationFactor, d_frameBuffer);
 
     // Copy result to CPU
     cudaMemcpy(h_frameBuffer.data(), d_frameBuffer, width * height * sizeof(float4), cudaMemcpyDeviceToHost);

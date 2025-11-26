@@ -145,6 +145,7 @@
     <ClInclude Include="src\scene\Object.h" />
     <ClInclude Include="src\scene\Sphere.h" />
     <ClInclude Include="src\scene\Triangle.h" />
+    <ClInclude Include="src\scene\ObjLoader.h" />
     <ClInclude Include="src\scene\Material.h" />
     <ClInclude Include="src\scene\ObjLoader.h" />
     <ClInclude Include="src\lighting\Light.h" />

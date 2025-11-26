@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 #include <sutil/vec_math.h>
 
 // Simple camera configuration read from JSON.
@@ -21,19 +22,82 @@ struct AnimationConfig
     float emissionInterval = 0.5f; // Seconds between photon emissions
 };
 
+// Photon gathering parameters
+struct GatheringConfig
+{
+    float indirect_radius = 100.0f;       // Search radius for indirect lighting
+    float caustic_radius = 50.0f;         // Search radius for caustics (tighter = sharper)
+    float indirect_brightness = 50000.0f; // Multiplier for indirect lighting visibility
+    float caustic_brightness = 100000.0f; // Multiplier for caustic visibility
+};
+
+// Direct lighting parameters
+struct DirectLightingConfig
+{
+    float ambient = 0.03f;               // Base ambient light
+    float shadow_ambient = 0.02f;        // Ambient in shadowed areas
+    float intensity = 0.5f;              // Direct lighting intensity multiplier
+    float attenuation_factor = 0.00001f; // Light falloff factor
+};
+
+// Specular/glass material parameters
+struct SpecularConfig
+{
+    unsigned int max_recursion_depth = 10;               // Max ray bounces for reflections/refractions
+    float glass_ior = 1.5f;                              // Index of refraction for glass
+    float3 glass_tint = make_float3(0.98f, 0.99f, 1.0f); // Glass color tint
+    float mirror_reflectivity = 0.95f;                   // Mirror reflection intensity
+    float fresnel_min = 0.1f;                            // Fresnel effect minimum
+    float indirect_brightness = 100000.0f;               // Indirect brightness in specular reflections
+    float caustic_brightness = 200000.0f;                // Caustic brightness in specular reflections
+    float ambient = 0.15f;                               // Ambient in specular mode
+};
+
+// Render mode weights
+struct WeightsConfig
+{
+    float direct = 1.0f;
+    float indirect = 1.0f;
+    float caustics = 1.0f;
+    float specular = 0.5f;
+};
+
+// Cornell box wall colors
+struct WallColorsConfig
+{
+    float3 floor = make_float3(0.8f, 0.8f, 0.8f);
+    float3 ceiling = make_float3(0.8f, 0.8f, 0.8f);
+    float3 back = make_float3(0.8f, 0.8f, 0.8f);
+    float3 left = make_float3(0.8f, 0.0f, 0.0f);  // Red wall
+    float3 right = make_float3(0.0f, 0.0f, 0.8f); // Blue wall
+};
+
+// Mesh object configuration
+struct MeshObjectConfig
+{
+    std::string path;
+    float3 position = make_float3(0.0f, 0.0f, 0.0f);
+    float scale = 1.0f;
+    std::string materialType = "diffuse";
+    float3 color = make_float3(0.8f, 0.8f, 0.8f);
+    float ior = 1.5f;
+};
+
 // Simple configuration loader for photon mapping parameters from a JSON file.
-// This is intentionally minimal and only extracts the fields we currently use.
 struct PhotonMappingConfig
 {
     unsigned int max_photons = 100000;
     float photon_collision_radius = 5.0f;
-    float direct_weight = 1.0f;
-    float indirect_weight = 1.0f;
-    float caustics_weight = 1.0f;
-    float participating_media_weight = 1.0f;
 
     AnimationConfig animation;
+    GatheringConfig gathering;
+    DirectLightingConfig direct_lighting;
+    SpecularConfig specular;
+    WeightsConfig weights;
+    WallColorsConfig walls;
     CameraConfig camera;
+
+    std::vector<MeshObjectConfig> meshes;
 };
 
 class ConfigLoader

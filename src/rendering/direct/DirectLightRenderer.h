@@ -32,6 +32,12 @@ private:
     unsigned int bufferWidth = 0;
     unsigned int bufferHeight = 0;
 
+    // Configurable lighting parameters
+    float ambient = 0.03f;
+    float shadowAmbient = 0.02f;
+    float intensity = 0.5f;
+    float attenuationFactor = 0.00001f;
+
     bool initialized = false;
 
     void createShaders();
@@ -49,6 +55,9 @@ public:
     void setCamera(const Camera* cam) { camera = cam; }
     void setScene(const Scene* s) { scene = s; }
     void setOptixManager(OptixManager* mgr) { optixManager = mgr; }
+    void setLightingParams(float amb, float shadowAmb, float inten, float atten) {
+        ambient = amb; shadowAmbient = shadowAmb; intensity = inten; attenuationFactor = atten;
+    }
 
     // Render one frame of direct lighting
     void render();

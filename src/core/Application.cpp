@@ -95,9 +95,7 @@ bool Application::initialize()
 
     // E key exports combined image
     inputCommandManager->bindKey(GLFW_KEY_E, [this]()
-                                 {
-                                     combinedRenderer->exportToImage("combined_render");
-                                 });
+                                 { combinedRenderer->exportToImage("combined_render"); });
 
     // M key cycles through right viewport modes: Global -> Caustic dots -> Direct -> Indirect -> Caustic light -> Global
     inputCommandManager->bindKey(GLFW_KEY_M, [this]()
@@ -199,64 +197,72 @@ bool Application::initialize()
     const float cornellHeight = Constants::Cornell::HEIGHT;
     const float cornellDepth = Constants::Cornell::DEPTH;
 
-    float3 white = make_float3(Constants::Cornell::WHITE_R, Constants::Cornell::WHITE_G, Constants::Cornell::WHITE_B);
-    float3 red = make_float3(Constants::Cornell::RED_R, Constants::Cornell::RED_G, Constants::Cornell::RED_B);
-    float3 blue = make_float3(Constants::Cornell::BLUE_R, Constants::Cornell::BLUE_G, Constants::Cornell::BLUE_B);
+    // Wall colors from config
+    float3 floorColor = pmc.walls.floor;
+    float3 ceilingColor = pmc.walls.ceiling;
+    float3 backColor = pmc.walls.back;
+    float3 leftColor = pmc.walls.left;   // Was red
+    float3 rightColor = pmc.walls.right; // Was blue
 
+    // Floor (2 triangles)
     scene.addObject(std::make_unique<Triangle>(
         make_float3(0.0f, 0.0f, 0.0f),
         make_float3(0.0f, 0.0f, cornellDepth),
         make_float3(cornellWidth, 0.0f, cornellDepth),
-        white));
+        floorColor));
     scene.addObject(std::make_unique<Triangle>(
         make_float3(0.0f, 0.0f, 0.0f),
         make_float3(cornellWidth, 0.0f, cornellDepth),
         make_float3(cornellWidth, 0.0f, 0.0f),
-        white));
+        floorColor));
 
+    // Ceiling (2 triangles)
     scene.addObject(std::make_unique<Triangle>(
         make_float3(0.0f, cornellHeight, 0.0f),
         make_float3(cornellWidth, cornellHeight, 0.0f),
         make_float3(cornellWidth, cornellHeight, cornellDepth),
-        white));
+        ceilingColor));
     scene.addObject(std::make_unique<Triangle>(
         make_float3(0.0f, cornellHeight, 0.0f),
         make_float3(cornellWidth, cornellHeight, cornellDepth),
         make_float3(0.0f, cornellHeight, cornellDepth),
-        white));
+        ceilingColor));
 
+    // Back wall (2 triangles)
     scene.addObject(std::make_unique<Triangle>(
         make_float3(0.0f, 0.0f, cornellDepth),
         make_float3(0.0f, cornellHeight, cornellDepth),
         make_float3(cornellWidth, cornellHeight, cornellDepth),
-        white));
+        backColor));
     scene.addObject(std::make_unique<Triangle>(
         make_float3(0.0f, 0.0f, cornellDepth),
         make_float3(cornellWidth, cornellHeight, cornellDepth),
         make_float3(cornellWidth, 0.0f, cornellDepth),
-        white));
+        backColor));
 
+    // Left wall (2 triangles) - configurable color (was red)
     scene.addObject(std::make_unique<Triangle>(
         make_float3(0.0f, 0.0f, 0.0f),
         make_float3(0.0f, 0.0f, cornellDepth),
         make_float3(0.0f, cornellHeight, cornellDepth),
-        red));
+        leftColor));
     scene.addObject(std::make_unique<Triangle>(
         make_float3(0.0f, 0.0f, 0.0f),
         make_float3(0.0f, cornellHeight, cornellDepth),
         make_float3(0.0f, cornellHeight, 0.0f),
-        red));
+        leftColor));
 
+    // Right wall (2 triangles) - configurable color (was blue)
     scene.addObject(std::make_unique<Triangle>(
         make_float3(cornellWidth, 0.0f, 0.0f),
         make_float3(cornellWidth, 0.0f, cornellDepth),
         make_float3(cornellWidth, cornellHeight, 0.0f),
-        blue));
+        rightColor));
     scene.addObject(std::make_unique<Triangle>(
         make_float3(cornellWidth, 0.0f, cornellDepth),
         make_float3(cornellWidth, cornellHeight, cornellDepth),
         make_float3(cornellWidth, cornellHeight, 0.0f),
-        blue));
+        rightColor));
 
     // Place the quad light flush with the ceiling, pointing downwards.
     float3 lightCenter = make_float3(278.0f, cornellHeight - 1.0f, 279.6f);
@@ -269,9 +275,20 @@ bool Application::initialize()
     scene.addLight(std::make_unique<QuadLight>(
         lightCenter, lightNormal, lightU, lightWidth, lightHeight, lightIntensity));
 
+    // Load mesh objects from configuration
+    for (const auto &meshConfig : pmc.meshes)
+    {
+        auto triangles = ObjLoader::load(meshConfig.path, meshConfig.position, meshConfig.scale, meshConfig.color);
+        for (auto &tri : triangles)
+        {
+            scene.addObject(std::move(tri));
+        }
+    }
+
     // Initialize collision detector with scene and Cornell box dimensions
     collisionDetector = std::make_unique<CollisionDetector>(
         &scene, photonCollisionRadius, cornellWidth, cornellHeight, cornellDepth);
+    collisionDetector->setWallColors(floorColor, ceilingColor, backColor, leftColor, rightColor);
 
     if (!optixManager.initialize())
     {
@@ -339,7 +356,7 @@ bool Application::initialize()
     }
 
     // Add spheres to scene for raster rendering
-    scene.addObject(std::make_unique<Sphere>(sphere1Center, sphere1Radius, make_float3(0.9f, 0.95f, 1.0f))); // Glass tint
+    scene.addObject(std::make_unique<Sphere>(sphere1Center, sphere1Radius, make_float3(0.9f, 0.95f, 1.0f)));   // Glass tint
     scene.addObject(std::make_unique<Sphere>(sphere2Center, sphere2Radius, make_float3(0.95f, 0.95f, 0.95f))); // Mirror
 
     if (!optixManager.buildIAS())
@@ -369,27 +386,59 @@ bool Application::initialize()
     directLightRenderer->setCamera(&camera);
     directLightRenderer->setScene(&scene);
     directLightRenderer->setOptixManager(&optixManager);
+    directLightRenderer->setLightingParams(pmc.direct_lighting.ambient, pmc.direct_lighting.shadow_ambient,
+                                           pmc.direct_lighting.intensity, pmc.direct_lighting.attenuation_factor);
 
     indirectLightRenderer->setViewport(glManager.getRightViewport());
     indirectLightRenderer->setCamera(&camera);
     indirectLightRenderer->setScene(&scene);
-    indirectLightRenderer->setGatherRadius(100.0f);  // Larger radius for better gathering
+    indirectLightRenderer->setGatherRadius(pmc.gathering.indirect_radius);
+    indirectLightRenderer->setBrightnessMultiplier(pmc.gathering.indirect_brightness);
 
     causticLightRenderer->setViewport(glManager.getRightViewport());
     causticLightRenderer->setCamera(&camera);
     causticLightRenderer->setScene(&scene);
-    causticLightRenderer->setGatherRadius(50.0f);  // Tighter radius for sharper caustics
+    causticLightRenderer->setGatherRadius(pmc.gathering.caustic_radius);
+    causticLightRenderer->setBrightnessMultiplier(pmc.gathering.caustic_brightness);
 
     specularLightRenderer->setViewport(glManager.getRightViewport());
     specularLightRenderer->setCamera(&camera);
     specularLightRenderer->setScene(&scene);
-    specularLightRenderer->setGatherRadius(100.0f);
+    {
+        OptixManager::SpecularParams sp;
+        sp.gather_radius = pmc.gathering.indirect_radius;
+        sp.max_recursion_depth = pmc.specular.max_recursion_depth;
+        sp.glass_ior = pmc.specular.glass_ior;
+        sp.glass_tint = pmc.specular.glass_tint;
+        sp.mirror_reflectivity = pmc.specular.mirror_reflectivity;
+        sp.fresnel_min = pmc.specular.fresnel_min;
+        sp.specular_ambient = pmc.specular.ambient;
+        sp.indirect_brightness = pmc.specular.indirect_brightness;
+        sp.caustic_brightness = pmc.specular.caustic_brightness;
+        specularLightRenderer->setSpecularParams(sp);
+    }
 
     combinedRenderer->setViewport(glManager.getRightViewport());
     combinedRenderer->setCamera(&camera);
     combinedRenderer->setScene(&scene);
-    combinedRenderer->setWeights(pmc.direct_weight, pmc.indirect_weight, pmc.caustics_weight, 0.5f);  // specular weight
-    combinedRenderer->setGatherRadius(100.0f);
+    combinedRenderer->setWeights(pmc.weights.direct, pmc.weights.indirect, pmc.weights.caustics, pmc.weights.specular);
+    combinedRenderer->setGatherRadius(pmc.gathering.indirect_radius);
+    combinedRenderer->setBrightnessMultipliers(pmc.gathering.indirect_brightness, pmc.gathering.caustic_brightness);
+    combinedRenderer->setDirectLightingParams(pmc.direct_lighting.ambient, pmc.direct_lighting.shadow_ambient,
+                                              pmc.direct_lighting.intensity, pmc.direct_lighting.attenuation_factor);
+    {
+        OptixManager::SpecularParams sp;
+        sp.gather_radius = pmc.gathering.indirect_radius;
+        sp.max_recursion_depth = pmc.specular.max_recursion_depth;
+        sp.glass_ior = pmc.specular.glass_ior;
+        sp.glass_tint = pmc.specular.glass_tint;
+        sp.mirror_reflectivity = pmc.specular.mirror_reflectivity;
+        sp.fresnel_min = pmc.specular.fresnel_min;
+        sp.specular_ambient = pmc.specular.ambient;
+        sp.indirect_brightness = pmc.specular.indirect_brightness;
+        sp.caustic_brightness = pmc.specular.caustic_brightness;
+        combinedRenderer->setSpecularParams(sp);
+    }
 
     float rightAspect = static_cast<float>(glManager.getRightViewport().width) / static_cast<float>(glManager.getRightViewport().height);
     std::cout << "Right Renderer - Viewport: " << glManager.getRightViewport().width << "x" << glManager.getRightViewport().height

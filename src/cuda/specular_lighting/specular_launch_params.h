@@ -36,5 +36,15 @@ struct SpecularLaunchParams
 
     // For detecting what we hit
     unsigned int quadLightStartIndex;
+
+    // Configurable specular parameters
+    unsigned int max_recursion_depth;
+    float glass_ior;
+    float3 glass_tint;
+    float mirror_reflectivity;
+    float fresnel_min;
+    float specular_ambient;
+    float indirect_brightness;
+    float caustic_brightness;
 };
 

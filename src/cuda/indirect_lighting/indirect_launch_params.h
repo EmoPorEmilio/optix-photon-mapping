@@ -27,6 +27,7 @@ struct IndirectLaunchParams
     Photon* photon_map;
     unsigned int photon_count;
     float gather_radius;  // Search radius for photon gathering
+    float brightness_multiplier;  // Configurable visibility multiplier
 
     // Scene bounds (for normalization)
     unsigned int quadLightStartIndex;

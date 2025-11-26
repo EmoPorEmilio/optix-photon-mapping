@@ -55,7 +55,11 @@ public:
     // Upload photon map to GPU for gathering
     void uploadPhotonMap(const std::vector<Photon>& photons);
     void setGatherRadius(float radius) { gatherRadius = radius; }
+    void setBrightnessMultiplier(float mult) { brightnessMultiplier = mult; }
 
     void render();
+
+private:
+    float brightnessMultiplier = 50000.0f;  // Configurable brightness
 };
 

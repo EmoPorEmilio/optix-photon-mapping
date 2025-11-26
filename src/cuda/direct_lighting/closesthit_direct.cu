@@ -11,26 +11,36 @@ __device__ __forceinline__ float frand(unsigned int &seed)
     return (seed & 0x00FFFFFF) / static_cast<float>(0x01000000);
 }
 
-// Check if a point is occluded from the light
-__device__ bool isOccluded(const float3 &origin, const float3 &direction, float maxDist)
+// Check if ray intersects a sphere (for shadow testing)
+__device__ bool raySphereIntersect(const float3 &origin, const float3 &dir,
+                                   const float3 &center, float radius, float maxDist)
 {
-    unsigned int occluded = 0;
+    float3 oc = origin - center;
+    float a = dot(dir, dir);
+    float b = 2.0f * dot(oc, dir);
+    float c = dot(oc, oc) - radius * radius;
+    float disc = b * b - 4.0f * a * c;
 
-    optixTrace(
-        params.handle,
-        origin,
-        direction,
-        0.001f,           // tmin - offset to avoid self-intersection
-        maxDist - 0.001f, // tmax - stop before light
-        0.0f,
-        OptixVisibilityMask(255),
-        OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT | OPTIX_RAY_FLAG_DISABLE_ANYHIT,
-        2, // SBT offset for shadow rays (after 2 primary hit groups)
-        1, // SBT stride (1 record per instance)
-        1, // miss SBT index for shadow
-        occluded);
+    if (disc < 0.0f)
+        return false;
 
-    return occluded != 0;
+    float sqrtD = sqrtf(disc);
+    float t = (-b - sqrtD) / (2.0f * a);
+    if (t > 0.001f && t < maxDist - 0.001f)
+        return true;
+
+    t = (-b + sqrtD) / (2.0f * a);
+    return (t > 0.001f && t < maxDist - 0.001f);
+}
+
+// Check if a point is occluded from the light by the spheres
+__device__ bool isOccludedBySpheres(const float3 &origin, const float3 &direction, float maxDist)
+{
+    if (raySphereIntersect(origin, direction, params.sphere1_center, params.sphere1_radius, maxDist))
+        return true;
+    if (raySphereIntersect(origin, direction, params.sphere2_center, params.sphere2_radius, maxDist))
+        return true;
+    return false;
 }
 
 // Compute triangle normal using barycentric interpolation from built-in attributes
@@ -111,21 +121,28 @@ extern "C" __global__ void __closesthit__direct_triangle()
     // Offset the shadow ray origin along the normal to avoid self-intersection
     float3 shadowOrigin = hit_point + normal * 0.01f;
 
-    // Check visibility with shadow ray
-    if (!isOccluded(shadowOrigin, L, lightDist))
+    // Check if occluded by spheres
+    bool occluded = isOccludedBySpheres(shadowOrigin, L, lightDist);
+
+    if (!occluded)
     {
         // N dot L (use absolute value for two-sided lighting on walls)
         float NdotL = fabsf(dot(normal, L));
 
-        // Simple inverse square attenuation with minimum
-        float attenuation = 1.0f / (lightDist * lightDist * 0.00001f + 1.0f);
+        // Simple inverse square attenuation with configurable factor
+        float attenuation = 1.0f / (lightDist * lightDist * params.attenuation_factor + 1.0f);
 
-        // Diffuse contribution - properly scaled
-        color = mat.albedo * NdotL * attenuation * 0.5f;
+        // Diffuse contribution with configurable intensity
+        color = mat.albedo * NdotL * attenuation * params.intensity_multiplier;
+    }
+    else
+    {
+        // SHADOW - configurable shadow ambient
+        color = mat.albedo * params.shadow_ambient;
     }
 
-    // Add ambient term for visibility
-    color += mat.albedo * 0.1f;
+    // Add ambient term for visibility (even in shadow)
+    color += mat.albedo * params.ambient;
 
     // Clamp and write result
     color.x = fminf(1.0f, color.x);

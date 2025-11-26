@@ -36,7 +36,9 @@ private:
     unsigned int globalPhotonCount = 0;
     Photon* d_causticPhotonMap = nullptr;
     unsigned int causticPhotonCount = 0;
-    float gatherRadius = 100.0f;
+    
+    // Specular parameters
+    OptixManager::SpecularParams specParams;
 
     bool initialized = false;
 
@@ -56,7 +58,8 @@ public:
     
     void uploadGlobalPhotonMap(const std::vector<Photon>& photons);
     void uploadCausticPhotonMap(const std::vector<Photon>& caustics);
-    void setGatherRadius(float radius) { gatherRadius = radius; }
+    void setGatherRadius(float radius) { specParams.gather_radius = radius; }
+    void setSpecularParams(const OptixManager::SpecularParams& params) { specParams = params; }
 
     void render();
 };

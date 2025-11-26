@@ -177,7 +177,7 @@ void SpecularLightRenderer::render()
     optixManager->launchSpecularLighting(width, height, *camera,
                                          d_globalPhotonMap, globalPhotonCount,
                                          d_causticPhotonMap, causticPhotonCount,
-                                         gatherRadius, d_frameBuffer);
+                                         specParams, d_frameBuffer);
 
     // Copy to CPU
     cudaMemcpy(h_frameBuffer.data(), d_frameBuffer, width * height * sizeof(float4), cudaMemcpyDeviceToHost);

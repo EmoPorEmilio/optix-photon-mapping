@@ -155,7 +155,7 @@ void OptixManager::buildPhotonSBT()
 }
 
 void OptixManager::launchPhotonPass(unsigned int num_photons, const QuadLight &light,
-                                    unsigned int quadLightStartIndex, 
+                                    unsigned int quadLightStartIndex,
                                     CUdeviceptr &out_photons, unsigned int &out_count,
                                     CUdeviceptr &out_caustic_photons, unsigned int &out_caustic_count)
 {
@@ -222,11 +222,11 @@ void OptixManager::launchPhotonPass(unsigned int num_photons, const QuadLight &l
     params.sphere2.center = make_float3(368.0f, 103.5f, 351.0f);
     params.sphere2.radius = 103.5f;
     params.max_depth = 8;
-    
+
     // Global photon map output
     params.photons_out = reinterpret_cast<Photon *>(d_photon_buffer);
     params.photon_counter = d_photon_counter;
-    
+
     // Caustic photon map output
     params.caustic_photons_out = reinterpret_cast<Photon *>(d_caustic_photon_buffer);
     params.caustic_photon_counter = d_caustic_photon_counter;
@@ -254,7 +254,7 @@ void OptixManager::launchPhotonPass(unsigned int num_photons, const QuadLight &l
 
     CUDA_CHECK(cudaFree((void *)d_params));
 
-    std::cout << "Launched " << num_photons << " photons, stored " << out_count << " global + " 
+    std::cout << "Launched " << num_photons << " photons, stored " << out_count << " global + "
               << out_caustic_count << " caustic hits" << std::endl;
 }
 
@@ -306,7 +306,7 @@ bool OptixManager::loadDirectModule()
     OptixPipelineCompileOptions direct_pipeline_options = {};
     direct_pipeline_options.usesMotionBlur = false;
     direct_pipeline_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_ANY;
-    direct_pipeline_options.numPayloadValues = 4;  // RGBA
+    direct_pipeline_options.numPayloadValues = 4;   // RGBA
     direct_pipeline_options.numAttributeValues = 3; // normal
     direct_pipeline_options.exceptionFlags = OPTIX_EXCEPTION_FLAG_STACK_OVERFLOW;
     direct_pipeline_options.pipelineLaunchParamsVariableName = "params";
@@ -387,11 +387,10 @@ bool OptixManager::linkDirectPipeline()
         direct_triangle_hit_group,
         direct_sphere_hit_group,
         direct_shadow_triangle_hit_group,
-        direct_shadow_sphere_hit_group
-    };
+        direct_shadow_sphere_hit_group};
 
     OptixPipelineLinkOptions link_options = {};
-    link_options.maxTraceDepth = 2;  // Primary + shadow
+    link_options.maxTraceDepth = 2; // Primary + shadow
 
     char log[2048];
     size_t logSize = sizeof(log);
@@ -416,8 +415,8 @@ void OptixManager::buildDirectSBT()
     SbtRecord<RaygenData> rg = {};
     OPTIX_CHECK(optixSbtRecordPackHeader(direct_raygen_group, &rg));
     CUdeviceptr d_rg;
-    CUDA_CHECK(cudaMalloc((void**)&d_rg, sizeof(rg)));
-    CUDA_CHECK(cudaMemcpy((void*)d_rg, &rg, sizeof(rg), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMalloc((void **)&d_rg, sizeof(rg)));
+    CUDA_CHECK(cudaMemcpy((void *)d_rg, &rg, sizeof(rg), cudaMemcpyHostToDevice));
     direct_sbt.raygenRecord = d_rg;
 
     // Miss records (2: primary + shadow)
@@ -425,8 +424,8 @@ void OptixManager::buildDirectSBT()
     OPTIX_CHECK(optixSbtRecordPackHeader(direct_miss_group, &ms[0]));
     OPTIX_CHECK(optixSbtRecordPackHeader(direct_shadow_miss_group, &ms[1]));
     CUdeviceptr d_ms;
-    CUDA_CHECK(cudaMalloc((void**)&d_ms, sizeof(ms)));
-    CUDA_CHECK(cudaMemcpy((void*)d_ms, ms, sizeof(ms), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMalloc((void **)&d_ms, sizeof(ms)));
+    CUDA_CHECK(cudaMemcpy((void *)d_ms, ms, sizeof(ms), cudaMemcpyHostToDevice));
     direct_sbt.missRecordBase = d_ms;
     direct_sbt.missRecordStrideInBytes = sizeof(SbtRecord<MissData>);
     direct_sbt.missRecordCount = 2;
@@ -443,8 +442,8 @@ void OptixManager::buildDirectSBT()
     OPTIX_CHECK(optixSbtRecordPackHeader(direct_shadow_triangle_hit_group, &hg[2])); // Shadow triangle
     OPTIX_CHECK(optixSbtRecordPackHeader(direct_shadow_sphere_hit_group, &hg[3]));   // Shadow sphere
     CUdeviceptr d_hg;
-    CUDA_CHECK(cudaMalloc((void**)&d_hg, sizeof(hg)));
-    CUDA_CHECK(cudaMemcpy((void*)d_hg, hg, sizeof(hg), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMalloc((void **)&d_hg, sizeof(hg)));
+    CUDA_CHECK(cudaMemcpy((void *)d_hg, hg, sizeof(hg), cudaMemcpyHostToDevice));
     direct_sbt.hitgroupRecordBase = d_hg;
     direct_sbt.hitgroupRecordStrideInBytes = sizeof(SbtRecord<HitData>);
     direct_sbt.hitgroupRecordCount = 4;
@@ -482,7 +481,9 @@ bool OptixManager::createDirectLightingPipeline()
     return true;
 }
 
-void OptixManager::launchDirectLighting(unsigned int width, unsigned int height, const Camera& camera, float4* d_output)
+void OptixManager::launchDirectLighting(unsigned int width, unsigned int height, const Camera &camera,
+                                        float ambient, float shadow_ambient, float intensity, float attenuation,
+                                        float4 *d_output)
 {
     if (!direct_pipeline)
     {
@@ -490,8 +491,8 @@ void OptixManager::launchDirectLighting(unsigned int width, unsigned int height,
         return;
     }
 
-    // Include the launch params header
-    #include "../cuda/direct_lighting/direct_launch_params.h"
+// Include the launch params header
+#include "../cuda/direct_lighting/direct_launch_params.h"
 
     DirectLaunchParams params = {};
     params.frame_buffer = d_output;
@@ -517,7 +518,7 @@ void OptixManager::launchDirectLighting(unsigned int width, unsigned int height,
     params.handle = ias_handle;
 
     // Materials
-    params.triangle_materials = reinterpret_cast<Material*>(d_triangle_materials);
+    params.triangle_materials = reinterpret_cast<Material *>(d_triangle_materials);
     params.sphere_materials[0].type = MATERIAL_TRANSMISSIVE;
     params.sphere_materials[0].albedo = make_float3(0.95f, 0.95f, 1.0f);
     params.sphere_materials[1].type = MATERIAL_SPECULAR;
@@ -542,14 +543,20 @@ void OptixManager::launchDirectLighting(unsigned int width, unsigned int height,
     params.sphere2_center = sphere2_center;
     params.sphere2_radius = sphere2_radius;
 
+    // Configurable lighting parameters
+    params.ambient = ambient;
+    params.shadow_ambient = shadow_ambient;
+    params.intensity_multiplier = intensity;
+    params.attenuation_factor = attenuation;
+
     CUdeviceptr d_params;
-    CUDA_CHECK(cudaMalloc((void**)&d_params, sizeof(DirectLaunchParams)));
-    CUDA_CHECK(cudaMemcpy((void*)d_params, &params, sizeof(DirectLaunchParams), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMalloc((void **)&d_params, sizeof(DirectLaunchParams)));
+    CUDA_CHECK(cudaMemcpy((void *)d_params, &params, sizeof(DirectLaunchParams), cudaMemcpyHostToDevice));
 
     OPTIX_CHECK(optixLaunch(direct_pipeline, stream, d_params, sizeof(DirectLaunchParams), &direct_sbt, width, height, 1));
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    CUDA_CHECK(cudaFree((void*)d_params));
+    CUDA_CHECK(cudaFree((void *)d_params));
 }
 
 // ============= Indirect Lighting Pipeline (Color Bleeding) =============
@@ -560,7 +567,7 @@ bool OptixManager::loadIndirectModule()
     OptixPipelineCompileOptions indirect_pipeline_options = {};
     indirect_pipeline_options.usesMotionBlur = false;
     indirect_pipeline_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_ANY;
-    indirect_pipeline_options.numPayloadValues = 4;  // color RGB + t_hit
+    indirect_pipeline_options.numPayloadValues = 4; // color RGB + t_hit
     indirect_pipeline_options.numAttributeValues = 3;
     indirect_pipeline_options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
     indirect_pipeline_options.pipelineLaunchParamsVariableName = "params";
@@ -622,8 +629,7 @@ bool OptixManager::linkIndirectPipeline()
         indirect_raygen_group,
         indirect_miss_group,
         indirect_triangle_hit_group,
-        indirect_sphere_hit_group
-    };
+        indirect_sphere_hit_group};
 
     OptixPipelineLinkOptions link_options = {};
     link_options.maxTraceDepth = 1;
@@ -647,19 +653,23 @@ void OptixManager::buildIndirectSBT()
     SbtRecord<RaygenData> rg = {};
     OPTIX_CHECK(optixSbtRecordPackHeader(indirect_raygen_group, &rg));
     CUdeviceptr d_rg;
-    CUDA_CHECK(cudaMalloc((void**)&d_rg, sizeof(rg)));
-    CUDA_CHECK(cudaMemcpy((void*)d_rg, &rg, sizeof(rg), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMalloc((void **)&d_rg, sizeof(rg)));
+    CUDA_CHECK(cudaMemcpy((void *)d_rg, &rg, sizeof(rg), cudaMemcpyHostToDevice));
 
     // Miss record
     SbtRecord<MissData> ms = {};
     OPTIX_CHECK(optixSbtRecordPackHeader(indirect_miss_group, &ms));
     CUdeviceptr d_ms;
-    CUDA_CHECK(cudaMalloc((void**)&d_ms, sizeof(ms)));
-    CUDA_CHECK(cudaMemcpy((void*)d_ms, &ms, sizeof(ms), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMalloc((void **)&d_ms, sizeof(ms)));
+    CUDA_CHECK(cudaMemcpy((void *)d_ms, &ms, sizeof(ms), cudaMemcpyHostToDevice));
 
     // Hit group records - ALL must be same size for uniform stride
-    struct SphereHitData { float3 center; float radius; };
-    
+    struct SphereHitData
+    {
+        float3 center;
+        float radius;
+    };
+
     // Use the larger size for all records
     SbtRecord<SphereHitData> tri_hit = {};
     OPTIX_CHECK(optixSbtRecordPackHeader(indirect_triangle_hit_group, &tri_hit));
@@ -679,13 +689,13 @@ void OptixManager::buildIndirectSBT()
     const size_t record_size = sizeof(SbtRecord<SphereHitData>);
     const size_t hg_size = 3 * record_size;
     CUdeviceptr d_hg;
-    CUDA_CHECK(cudaMalloc((void**)&d_hg, hg_size));
+    CUDA_CHECK(cudaMalloc((void **)&d_hg, hg_size));
 
-    char* hg_ptr = new char[hg_size];
+    char *hg_ptr = new char[hg_size];
     memcpy(hg_ptr, &tri_hit, record_size);
     memcpy(hg_ptr + record_size, &sphere1_hit, record_size);
     memcpy(hg_ptr + 2 * record_size, &sphere2_hit, record_size);
-    CUDA_CHECK(cudaMemcpy((void*)d_hg, hg_ptr, hg_size, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy((void *)d_hg, hg_ptr, hg_size, cudaMemcpyHostToDevice));
     delete[] hg_ptr;
 
     // Build SBT
@@ -695,7 +705,7 @@ void OptixManager::buildIndirectSBT()
     indirect_sbt.missRecordCount = 1;
     indirect_sbt.hitgroupRecordBase = d_hg;
     indirect_sbt.hitgroupRecordStrideInBytes = record_size;
-    indirect_sbt.hitgroupRecordCount = 3;  // triangle + 2 spheres
+    indirect_sbt.hitgroupRecordCount = 3; // triangle + 2 spheres
 }
 
 bool OptixManager::createIndirectLightingPipeline()
@@ -730,9 +740,9 @@ bool OptixManager::createIndirectLightingPipeline()
     return true;
 }
 
-void OptixManager::launchIndirectLighting(unsigned int width, unsigned int height, const Camera& camera,
-                                          const Photon* d_photon_map, unsigned int photon_count,
-                                          float gather_radius, float4* d_output)
+void OptixManager::launchIndirectLighting(unsigned int width, unsigned int height, const Camera &camera,
+                                          const Photon *d_photon_map, unsigned int photon_count,
+                                          float gather_radius, float brightness_multiplier, float4 *d_output)
 {
     if (!indirect_pipeline)
     {
@@ -740,7 +750,7 @@ void OptixManager::launchIndirectLighting(unsigned int width, unsigned int heigh
         return;
     }
 
-    #include "../cuda/indirect_lighting/indirect_launch_params.h"
+#include "../cuda/indirect_lighting/indirect_launch_params.h"
 
     IndirectLaunchParams params = {};
     params.frame_buffer = d_output;
@@ -756,27 +766,28 @@ void OptixManager::launchIndirectLighting(unsigned int width, unsigned int heigh
     params.handle = ias_handle;
 
     // Materials
-    params.triangle_materials = reinterpret_cast<Material*>(d_triangle_materials);
+    params.triangle_materials = reinterpret_cast<Material *>(d_triangle_materials);
     params.sphere_materials[0].type = MATERIAL_TRANSMISSIVE;
     params.sphere_materials[0].albedo = make_float3(0.95f, 0.95f, 1.0f);
     params.sphere_materials[1].type = MATERIAL_SPECULAR;
     params.sphere_materials[1].albedo = make_float3(0.95f, 0.95f, 0.95f);
 
     // Photon map for gathering
-    params.photon_map = const_cast<Photon*>(d_photon_map);
+    params.photon_map = const_cast<Photon *>(d_photon_map);
     params.photon_count = photon_count;
     params.gather_radius = gather_radius;
+    params.brightness_multiplier = brightness_multiplier;
 
     params.quadLightStartIndex = 10;
 
     CUdeviceptr d_params;
-    CUDA_CHECK(cudaMalloc((void**)&d_params, sizeof(IndirectLaunchParams)));
-    CUDA_CHECK(cudaMemcpy((void*)d_params, &params, sizeof(IndirectLaunchParams), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMalloc((void **)&d_params, sizeof(IndirectLaunchParams)));
+    CUDA_CHECK(cudaMemcpy((void *)d_params, &params, sizeof(IndirectLaunchParams), cudaMemcpyHostToDevice));
 
     OPTIX_CHECK(optixLaunch(indirect_pipeline, stream, d_params, sizeof(IndirectLaunchParams), &indirect_sbt, width, height, 1));
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    CUDA_CHECK(cudaFree((void*)d_params));
+    CUDA_CHECK(cudaFree((void *)d_params));
 }
 
 // ============= Caustic Lighting Pipeline (Glossy/Specular Spheres) =============
@@ -850,8 +861,7 @@ bool OptixManager::linkCausticPipeline()
         caustic_raygen_group,
         caustic_miss_group,
         caustic_triangle_hit_group,
-        caustic_sphere_hit_group
-    };
+        caustic_sphere_hit_group};
 
     OptixPipelineLinkOptions link_options = {};
     link_options.maxTraceDepth = 1;
@@ -875,18 +885,22 @@ void OptixManager::buildCausticSBT()
     SbtRecord<RaygenData> rg = {};
     OPTIX_CHECK(optixSbtRecordPackHeader(caustic_raygen_group, &rg));
     CUdeviceptr d_rg;
-    CUDA_CHECK(cudaMalloc((void**)&d_rg, sizeof(rg)));
-    CUDA_CHECK(cudaMemcpy((void*)d_rg, &rg, sizeof(rg), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMalloc((void **)&d_rg, sizeof(rg)));
+    CUDA_CHECK(cudaMemcpy((void *)d_rg, &rg, sizeof(rg), cudaMemcpyHostToDevice));
 
     // Miss record
     SbtRecord<MissData> ms = {};
     OPTIX_CHECK(optixSbtRecordPackHeader(caustic_miss_group, &ms));
     CUdeviceptr d_ms;
-    CUDA_CHECK(cudaMalloc((void**)&d_ms, sizeof(ms)));
-    CUDA_CHECK(cudaMemcpy((void*)d_ms, &ms, sizeof(ms), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMalloc((void **)&d_ms, sizeof(ms)));
+    CUDA_CHECK(cudaMemcpy((void *)d_ms, &ms, sizeof(ms), cudaMemcpyHostToDevice));
 
     // Hit group records - uniform size
-    struct SphereHitData { float3 center; float radius; };
+    struct SphereHitData
+    {
+        float3 center;
+        float radius;
+    };
     const size_t record_size = sizeof(SbtRecord<SphereHitData>);
 
     SbtRecord<SphereHitData> tri_hit = {};
@@ -904,13 +918,13 @@ void OptixManager::buildCausticSBT()
 
     const size_t hg_size = 3 * record_size;
     CUdeviceptr d_hg;
-    CUDA_CHECK(cudaMalloc((void**)&d_hg, hg_size));
+    CUDA_CHECK(cudaMalloc((void **)&d_hg, hg_size));
 
-    char* hg_ptr = new char[hg_size];
+    char *hg_ptr = new char[hg_size];
     memcpy(hg_ptr, &tri_hit, record_size);
     memcpy(hg_ptr + record_size, &sphere1_hit, record_size);
     memcpy(hg_ptr + 2 * record_size, &sphere2_hit, record_size);
-    CUDA_CHECK(cudaMemcpy((void*)d_hg, hg_ptr, hg_size, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy((void *)d_hg, hg_ptr, hg_size, cudaMemcpyHostToDevice));
     delete[] hg_ptr;
 
     caustic_sbt.raygenRecord = d_rg;
@@ -954,9 +968,9 @@ bool OptixManager::createCausticLightingPipeline()
     return true;
 }
 
-void OptixManager::launchCausticLighting(unsigned int width, unsigned int height, const Camera& camera,
-                                         const Photon* d_caustic_map, unsigned int caustic_count,
-                                         float gather_radius, float4* d_output)
+void OptixManager::launchCausticLighting(unsigned int width, unsigned int height, const Camera &camera,
+                                         const Photon *d_caustic_map, unsigned int caustic_count,
+                                         float gather_radius, float brightness_multiplier, float4 *d_output)
 {
     if (!caustic_pipeline)
     {
@@ -964,7 +978,7 @@ void OptixManager::launchCausticLighting(unsigned int width, unsigned int height
         return;
     }
 
-    #include "../cuda/caustic_lighting/caustic_launch_params.h"
+#include "../cuda/caustic_lighting/caustic_launch_params.h"
 
     CausticLaunchParams params = {};
     params.frame_buffer = d_output;
@@ -983,20 +997,21 @@ void OptixManager::launchCausticLighting(unsigned int width, unsigned int height
     params.sphere_materials[1].type = MATERIAL_SPECULAR;
     params.sphere_materials[1].albedo = make_float3(0.95f, 0.95f, 0.95f);
 
-    params.caustic_photon_map = const_cast<Photon*>(d_caustic_map);
+    params.caustic_photon_map = const_cast<Photon *>(d_caustic_map);
     params.caustic_photon_count = caustic_count;
     params.gather_radius = gather_radius;
+    params.brightness_multiplier = brightness_multiplier;
 
     params.quadLightStartIndex = 10;
 
     CUdeviceptr d_params;
-    CUDA_CHECK(cudaMalloc((void**)&d_params, sizeof(CausticLaunchParams)));
-    CUDA_CHECK(cudaMemcpy((void*)d_params, &params, sizeof(CausticLaunchParams), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMalloc((void **)&d_params, sizeof(CausticLaunchParams)));
+    CUDA_CHECK(cudaMemcpy((void *)d_params, &params, sizeof(CausticLaunchParams), cudaMemcpyHostToDevice));
 
     OPTIX_CHECK(optixLaunch(caustic_pipeline, stream, d_params, sizeof(CausticLaunchParams), &caustic_sbt, width, height, 1));
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    CUDA_CHECK(cudaFree((void*)d_params));
+    CUDA_CHECK(cudaFree((void *)d_params));
 }
 
 // ============= Specular Lighting Pipeline (Reflection/Refraction) =============
@@ -1070,11 +1085,10 @@ bool OptixManager::linkSpecularPipeline()
         specular_raygen_group,
         specular_miss_group,
         specular_triangle_hit_group,
-        specular_sphere_hit_group
-    };
+        specular_sphere_hit_group};
 
     OptixPipelineLinkOptions link_options = {};
-    link_options.maxTraceDepth = 12;  // Support deep reflections/refractions
+    link_options.maxTraceDepth = 12; // Support deep reflections/refractions
 
     OptixPipelineCompileOptions pipeline_options = {};
     pipeline_options.usesMotionBlur = false;
@@ -1095,18 +1109,22 @@ void OptixManager::buildSpecularSBT()
     SbtRecord<RaygenData> rg = {};
     OPTIX_CHECK(optixSbtRecordPackHeader(specular_raygen_group, &rg));
     CUdeviceptr d_rg;
-    CUDA_CHECK(cudaMalloc((void**)&d_rg, sizeof(rg)));
-    CUDA_CHECK(cudaMemcpy((void*)d_rg, &rg, sizeof(rg), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMalloc((void **)&d_rg, sizeof(rg)));
+    CUDA_CHECK(cudaMemcpy((void *)d_rg, &rg, sizeof(rg), cudaMemcpyHostToDevice));
 
     // Miss record
     SbtRecord<MissData> ms = {};
     OPTIX_CHECK(optixSbtRecordPackHeader(specular_miss_group, &ms));
     CUdeviceptr d_ms;
-    CUDA_CHECK(cudaMalloc((void**)&d_ms, sizeof(ms)));
-    CUDA_CHECK(cudaMemcpy((void*)d_ms, &ms, sizeof(ms), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMalloc((void **)&d_ms, sizeof(ms)));
+    CUDA_CHECK(cudaMemcpy((void *)d_ms, &ms, sizeof(ms), cudaMemcpyHostToDevice));
 
     // Hit group records - uniform size
-    struct SphereHitData { float3 center; float radius; };
+    struct SphereHitData
+    {
+        float3 center;
+        float radius;
+    };
     const size_t record_size = sizeof(SbtRecord<SphereHitData>);
 
     SbtRecord<SphereHitData> tri_hit = {};
@@ -1124,13 +1142,13 @@ void OptixManager::buildSpecularSBT()
 
     const size_t hg_size = 3 * record_size;
     CUdeviceptr d_hg;
-    CUDA_CHECK(cudaMalloc((void**)&d_hg, hg_size));
+    CUDA_CHECK(cudaMalloc((void **)&d_hg, hg_size));
 
-    char* hg_ptr = new char[hg_size];
+    char *hg_ptr = new char[hg_size];
     memcpy(hg_ptr, &tri_hit, record_size);
     memcpy(hg_ptr + record_size, &sphere1_hit, record_size);
     memcpy(hg_ptr + 2 * record_size, &sphere2_hit, record_size);
-    CUDA_CHECK(cudaMemcpy((void*)d_hg, hg_ptr, hg_size, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy((void *)d_hg, hg_ptr, hg_size, cudaMemcpyHostToDevice));
     delete[] hg_ptr;
 
     specular_sbt.raygenRecord = d_rg;
@@ -1174,10 +1192,10 @@ bool OptixManager::createSpecularLightingPipeline()
     return true;
 }
 
-void OptixManager::launchSpecularLighting(unsigned int width, unsigned int height, const Camera& camera,
-                                          const Photon* d_global_map, unsigned int global_count,
-                                          const Photon* d_caustic_map, unsigned int caustic_count,
-                                          float gather_radius, float4* d_output)
+void OptixManager::launchSpecularLighting(unsigned int width, unsigned int height, const Camera &camera,
+                                          const Photon *d_global_map, unsigned int global_count,
+                                          const Photon *d_caustic_map, unsigned int caustic_count,
+                                          const SpecularParams &spec_params, float4 *d_output)
 {
     if (!specular_pipeline)
     {
@@ -1185,7 +1203,7 @@ void OptixManager::launchSpecularLighting(unsigned int width, unsigned int heigh
         return;
     }
 
-    #include "../cuda/specular_lighting/specular_launch_params.h"
+#include "../cuda/specular_lighting/specular_launch_params.h"
 
     SpecularLaunchParams params = {};
     params.frame_buffer = d_output;
@@ -1199,18 +1217,18 @@ void OptixManager::launchSpecularLighting(unsigned int width, unsigned int heigh
 
     params.handle = ias_handle;
 
-    params.triangle_materials = reinterpret_cast<Material*>(d_triangle_materials);
+    params.triangle_materials = reinterpret_cast<Material *>(d_triangle_materials);
     params.sphere_materials[0].type = MATERIAL_TRANSMISSIVE;
     params.sphere_materials[0].albedo = make_float3(0.95f, 0.95f, 1.0f);
     params.sphere_materials[1].type = MATERIAL_SPECULAR;
     params.sphere_materials[1].albedo = make_float3(0.95f, 0.95f, 0.95f);
 
     // Photon maps for full lighting in reflections/refractions
-    params.global_photon_map = const_cast<Photon*>(d_global_map);
+    params.global_photon_map = const_cast<Photon *>(d_global_map);
     params.global_photon_count = global_count;
-    params.caustic_photon_map = const_cast<Photon*>(d_caustic_map);
+    params.caustic_photon_map = const_cast<Photon *>(d_caustic_map);
     params.caustic_photon_count = caustic_count;
-    params.gather_radius = gather_radius;
+    params.gather_radius = spec_params.gather_radius;
 
     // Light info
     params.light_position = make_float3(278.0f, 548.8f - 1.0f, 279.6f);
@@ -1218,14 +1236,24 @@ void OptixManager::launchSpecularLighting(unsigned int width, unsigned int heigh
 
     params.quadLightStartIndex = 10;
 
+    // Configurable specular parameters
+    params.max_recursion_depth = spec_params.max_recursion_depth;
+    params.glass_ior = spec_params.glass_ior;
+    params.glass_tint = spec_params.glass_tint;
+    params.mirror_reflectivity = spec_params.mirror_reflectivity;
+    params.fresnel_min = spec_params.fresnel_min;
+    params.specular_ambient = spec_params.specular_ambient;
+    params.indirect_brightness = spec_params.indirect_brightness;
+    params.caustic_brightness = spec_params.caustic_brightness;
+
     CUdeviceptr d_params;
-    CUDA_CHECK(cudaMalloc((void**)&d_params, sizeof(SpecularLaunchParams)));
-    CUDA_CHECK(cudaMemcpy((void*)d_params, &params, sizeof(SpecularLaunchParams), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMalloc((void **)&d_params, sizeof(SpecularLaunchParams)));
+    CUDA_CHECK(cudaMemcpy((void *)d_params, &params, sizeof(SpecularLaunchParams), cudaMemcpyHostToDevice));
 
     OPTIX_CHECK(optixLaunch(specular_pipeline, stream, d_params, sizeof(SpecularLaunchParams), &specular_sbt, width, height, 1));
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    CUDA_CHECK(cudaFree((void*)d_params));
+    CUDA_CHECK(cudaFree((void *)d_params));
 }
 
 bool OptixManager::buildTriangleGAS(const std::vector<OptixVertex> &vertices, const std::vector<float3> &colors)
@@ -1262,8 +1290,8 @@ bool OptixManager::buildTriangleGAS(const std::vector<OptixVertex> &vertices, co
     for (size_t i = 0; i < material_count; ++i)
     {
         host_materials[i].type = MATERIAL_DIFFUSE;
-        host_materials[i].albedo = colors[i];          // carry wall color into photons
-        host_materials[i].diffuseProb = 0.5f;          // 50% chance to continue
+        host_materials[i].albedo = colors[i]; // carry wall color into photons
+        host_materials[i].diffuseProb = 0.5f; // 50% chance to continue
         host_materials[i].transmissiveCoeff = 0.0f;
     }
 

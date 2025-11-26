@@ -57,6 +57,16 @@ public:
         frontWallColor = make_float3(Constants::Cornell::WHITE_R, Constants::Cornell::WHITE_G, Constants::Cornell::WHITE_B);
     }
 
+    // Set wall colors from config
+    void setWallColors(float3 floor, float3 ceiling, float3 back, float3 left, float3 right)
+    {
+        floorColor = floor;
+        ceilingColor = ceiling;
+        backWallColor = back;
+        leftWallColor = left;
+        rightWallColor = right;
+    }
+
     // Simple collision check (legacy)
     bool checkCollision(const float3 &position) const
     {

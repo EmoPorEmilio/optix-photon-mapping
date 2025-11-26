@@ -26,6 +26,7 @@ struct CausticLaunchParams
     Photon* caustic_photon_map;
     unsigned int caustic_photon_count;
     float gather_radius;
+    float brightness_multiplier;  // Configurable visibility multiplier
 
     // For light source detection
     unsigned int quadLightStartIndex;

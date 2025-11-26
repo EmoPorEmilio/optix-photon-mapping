@@ -173,7 +173,7 @@ void CausticLightRenderer::render()
     }
     else
     {
-        optixManager->launchCausticLighting(width, height, *camera, d_causticMap, causticCount, gatherRadius, d_frameBuffer);
+        optixManager->launchCausticLighting(width, height, *camera, d_causticMap, causticCount, gatherRadius, brightnessMultiplier, d_frameBuffer);
         cudaMemcpy(h_frameBuffer.data(), d_frameBuffer, width * height * sizeof(float4), cudaMemcpyDeviceToHost);
     }
 

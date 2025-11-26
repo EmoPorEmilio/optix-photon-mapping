@@ -54,7 +54,11 @@ public:
 
     void uploadCausticMap(const std::vector<Photon>& caustics);
     void setGatherRadius(float radius) { gatherRadius = radius; }
+    void setBrightnessMultiplier(float mult) { brightnessMultiplier = mult; }
 
     void render();
+
+private:
+    float brightnessMultiplier = 100000.0f;  // Configurable brightness
 };
 

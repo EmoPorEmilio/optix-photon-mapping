@@ -18,6 +18,8 @@ extern "C" __global__ void __miss__direct()
 // Shadow ray miss - no occlusion (light is visible)
 extern "C" __global__ void __miss__shadow()
 {
+    // DEBUG: Force everything to be occluded to test if shadow rays work
+    // optixSetPayload_0(1u);  // Force occluded for testing
     optixSetPayload_0(0u);  // Not occluded
 }
 

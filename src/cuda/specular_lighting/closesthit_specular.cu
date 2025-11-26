@@ -125,21 +125,21 @@ extern "C" __global__ void __closesthit__specular_triangle()
     // Compute full lighting: direct + indirect + caustics
     float3 color = make_float3(0.0f);
     
-    // Direct lighting (stronger)
+    // Direct lighting
     color += computeDirectLight(hit_point, normal, albedo) * 2.0f;
     
-    // Indirect (global photon map) - brighter
+    // Indirect (global photon map) - configurable brightness
     float3 indirect = gatherPhotons(hit_point, normal, params.global_photon_map, 
                                      params.global_photon_count, params.gather_radius);
-    color += indirect * albedo * 100000.0f;  // Doubled for brightness
+    color += indirect * albedo * params.indirect_brightness;
     
-    // Caustics - brighter
+    // Caustics - configurable brightness
     float3 caustics = gatherPhotons(hit_point, normal, params.caustic_photon_map,
                                      params.caustic_photon_count, params.gather_radius * 0.5f);
-    color += caustics * 200000.0f;  // Caustics are brighter
+    color += caustics * params.caustic_brightness;
     
-    // Stronger ambient for base visibility
-    color += albedo * 0.15f;
+    // Configurable ambient for base visibility
+    color += albedo * params.specular_ambient;
     
     // Clamp
     color.x = fminf(1.0f, color.x);
@@ -157,8 +157,8 @@ extern "C" __global__ void __closesthit__specular_sphere()
     const unsigned int prim_idx = optixGetPrimitiveIndex();
     unsigned int depth = optixGetPayload_3();
     
-    // Max recursion depth
-    if (depth >= 10)
+    // Max recursion depth - configurable
+    if (depth >= params.max_recursion_depth)
     {
         optixSetPayload_0(__float_as_uint(0.0f));
         optixSetPayload_1(__float_as_uint(0.0f));
@@ -191,8 +191,8 @@ extern "C" __global__ void __closesthit__specular_sphere()
     }
     else if (mat.type == MATERIAL_TRANSMISSIVE)
     {
-        // Refraction (glass)
-        float ior = 1.5f;  // Index of refraction for glass
+        // Refraction (glass) - configurable IOR
+        float ior = params.glass_ior;
         
         // Determine if entering or exiting
         bool entering = dot(ray_dir, normal) < 0.0f;
@@ -249,18 +249,18 @@ extern "C" __global__ void __closesthit__specular_sphere()
     
     if (mat.type == MATERIAL_TRANSMISSIVE)
     {
-        // Glass: slight blue tint, minimal attenuation
-        color *= make_float3(0.98f, 0.99f, 1.0f);
-        // Add slight Fresnel effect (brighter at edges)
-        float fresnel = 0.1f + 0.9f * powf(1.0f - fabsf(dot(ray_dir, normal)), 3.0f);
-        color += make_float3(0.1f, 0.1f, 0.12f) * fresnel;
+        // Glass: configurable tint
+        color *= params.glass_tint;
+        // Add Fresnel effect with configurable minimum
+        float fresnel = params.fresnel_min + (1.0f - params.fresnel_min) * powf(1.0f - fabsf(dot(ray_dir, normal)), 3.0f);
+        color += params.glass_tint * 0.1f * fresnel;
     }
     else if (mat.type == MATERIAL_SPECULAR)
     {
-        // Mirror: high reflectivity
-        color *= 0.95f;
+        // Mirror: configurable reflectivity
+        color *= params.mirror_reflectivity;
         // Add slight specular highlight
-        color += make_float3(0.05f, 0.05f, 0.05f);
+        color += make_float3(1.0f - params.mirror_reflectivity);
     }
     
     optixSetPayload_0(__float_as_uint(color.x));

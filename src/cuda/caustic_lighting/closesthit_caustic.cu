@@ -39,7 +39,7 @@ __device__ float3 gatherCausticPhotons(const float3& hit_point, const float3& no
     {
         float area = 3.14159265f * radius_sq;
         caustic = caustic / area;
-        caustic *= 100000.0f;  // Boost for visibility
+        caustic *= params.brightness_multiplier;  // Configurable visibility
     }
     
     return caustic;

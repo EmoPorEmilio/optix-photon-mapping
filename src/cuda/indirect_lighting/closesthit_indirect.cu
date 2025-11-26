@@ -66,8 +66,8 @@ __device__ float3 gatherPhotons(const float3& hit_point, const float3& normal, c
         float area = 3.14159265f * radius_sq;
         indirect = indirect * albedo / area;
         
-        // Scale for visibility - photon power is normalized, need significant boost
-        indirect *= 50000.0f;
+        // Scale for visibility - configurable brightness multiplier
+        indirect *= params.brightness_multiplier;
     }
     
     return indirect;
