@@ -16,6 +16,7 @@
 #include "../rendering/photon/AnimatedPhoton.h"
 #include "../rendering/photon/Photon.h"
 #include "../rendering/photon/TrajectoryExporter.h"
+#include "../rendering/photon/TrajectoryAnimator.h"
 #include "../rendering/photon/PhotonMapIO.h"
 #include "ExporterManager.h"
 #include "../rendering/direct/DirectLightRenderer.h"
@@ -58,25 +59,30 @@ private:
     // Debug/trajectory recording settings
     bool recordTrajectories = false;
     std::string trajectoryOutputFile = "photon_trajectories.txt";
-    
+
     // Photon map I/O settings
     bool savePhotonMap = false;
     bool loadPhotonMap = false;
     std::string photonMapFile = "photon_map.txt";
-    
-    // Image export settings
+
+    // Export settings
     bool exportImages = false;
+    bool exportMetrics = true; // Export performance metrics (independent of images)
     std::string exportDir = "export";
 
-    // CPU Photon Animation
+    // CPU Photon Animation (legacy)
     std::vector<AnimatedPhoton> animatedPhotons;
     unsigned int maxPhotons = 10;
     std::chrono::steady_clock::time_point lastPhotonEmissionTime;
     float photonCollisionRadius = 1.0f;
 
+    // Trajectory-based animation (uses recorded GPU photon paths)
+    TrajectoryAnimator trajectoryAnimator;
+    std::string trajectoryInputFile = "photon_trajectories.txt";
+
     // Photon Map Storage (stores photons after first diffuse bounce)
     std::vector<Photon> photonMap;
-    
+
     // Caustic Photon Map (stores photons that hit S/T then diffuse)
     std::vector<Photon> causticPhotonMap;
 

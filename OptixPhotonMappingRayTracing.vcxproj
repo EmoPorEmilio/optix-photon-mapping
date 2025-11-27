@@ -28,7 +28,6 @@
   <PropertyGroup Label="UserPaths">
     <CUDA_PATH Condition="'$(CUDA_PATH)'==''">C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.0</CUDA_PATH>
     <OPTIX_PATH Condition="'$(OPTIX_PATH)'==''">C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.0.0</OPTIX_PATH>
-    <OPTIX_SAMPLES_BUILD Condition="'$(OPTIX_SAMPLES_BUILD)'==''">C:\Users\emili\Desktop\proyectos\optix_samples_build</OPTIX_SAMPLES_BUILD>
   </PropertyGroup>
   
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
@@ -65,7 +64,7 @@
   <!-- DEBUG -->
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(OPTIX_PATH)\include;$(OPTIX_PATH)\SDK\cuda;$(OPTIX_PATH)\SDK;$(SolutionDir);$(CUDA_PATH)\include;$(OPTIX_PATH)\SDK\support\imgui\..;$(OPTIX_PATH)\SDK\support\glfw-3.4\include;$(OPTIX_PATH)\SDK\support\.;$(OPTIX_PATH)\SDK\sutil;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(OPTIX_PATH)\include;$(OPTIX_PATH)\SDK\cuda;$(OPTIX_PATH)\SDK;$(SolutionDir);$(SolutionDir)external;$(CUDA_PATH)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>%(AdditionalOptions) /w34101 /w34189 /w34018 /w34389</AdditionalOptions>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
@@ -78,16 +77,16 @@
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
       <WarningLevel>Level3</WarningLevel>
-      <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;OPTIX_SAMPLE_NAME_DEFINE=optixPathTracer;OPTIX_SAMPLE_DIR_DEFINE=optixPathTracer;_USE_MATH_DEFINES;NOMINMAX;IMGUI_API=__declspec(dllimport);GLFW_DLL;GLAD_GLAPI_EXPORT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;_USE_MATH_DEFINES;NOMINMAX;GLFW_DLL;GLAD_GLAPI_EXPORT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ObjectFileName>$(IntDir)</ObjectFileName>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>$(OPTIX_SAMPLES_BUILD)\lib\Debug\sutil_7_sdk.lib;$(CUDA_PATH)\lib\x64\cudart_static.lib;$(OPTIX_SAMPLES_BUILD)\lib\Debug\imgui.lib;$(OPTIX_SAMPLES_BUILD)\lib\Debug\glfw3dll.lib;$(OPTIX_SAMPLES_BUILD)\lib\Debug\glad.lib;opengl32.lib;glu32.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(CUDA_PATH)\lib\x64\cudart_static.lib;$(SolutionDir)external\lib\glfw3dll.lib;$(SolutionDir)external\lib\glad.lib;opengl32.lib;glu32.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <SubSystem>Console</SubSystem>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /Y /D "$(OPTIX_SAMPLES_BUILD)\bin\Debug\*.dll" "$(OutDir)"
+      <Command>xcopy /Y /D "$(SolutionDir)external\bin\*.dll" "$(OutDir)"
 xcopy /Y /D /E /I "$(SolutionDir)ptx" "$(OutDir)ptx"
 xcopy /Y /D /E /I "$(SolutionDir)assets" "$(OutDir)assets"</Command>
       <Message>Copying dependencies, shaders, and assets to output directory</Message>
@@ -97,7 +96,7 @@ xcopy /Y /D /E /I "$(SolutionDir)assets" "$(OutDir)assets"</Command>
   <!-- RELEASE -->
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(OPTIX_PATH)\include;$(OPTIX_PATH)\SDK\cuda;$(OPTIX_PATH)\SDK;$(SolutionDir);$(CUDA_PATH)\include;$(OPTIX_PATH)\SDK\support\imgui\..;$(OPTIX_PATH)\SDK\support\glfw-3.4\include;$(OPTIX_PATH)\SDK\support\.;$(OPTIX_PATH)\SDK\sutil;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(OPTIX_PATH)\include;$(OPTIX_PATH)\SDK\cuda;$(OPTIX_PATH)\SDK;$(SolutionDir);$(SolutionDir)external;$(CUDA_PATH)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>%(AdditionalOptions) /w34101 /w34189 /w34018 /w34389</AdditionalOptions>
       <DisableSpecificWarnings>4355;4996;4800</DisableSpecificWarnings>
       <ExceptionHandling>Sync</ExceptionHandling>
@@ -110,16 +109,16 @@ xcopy /Y /D /E /I "$(SolutionDir)assets" "$(OutDir)assets"</Command>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
       <WarningLevel>Level3</WarningLevel>
-      <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;OPTIX_SAMPLE_NAME_DEFINE=optixPathTracer;OPTIX_SAMPLE_DIR_DEFINE=optixPathTracer;_USE_MATH_DEFINES;NOMINMAX;IMGUI_API=__declspec(dllimport);GLFW_DLL;GLAD_GLAPI_EXPORT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;_USE_MATH_DEFINES;NOMINMAX;GLFW_DLL;GLAD_GLAPI_EXPORT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ObjectFileName>$(IntDir)</ObjectFileName>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>$(OPTIX_SAMPLES_BUILD)\lib\Release\sutil_7_sdk.lib;$(CUDA_PATH)\lib\x64\cudart_static.lib;$(OPTIX_SAMPLES_BUILD)\lib\Release\imgui.lib;$(OPTIX_SAMPLES_BUILD)\lib\Release\glfw3dll.lib;$(OPTIX_SAMPLES_BUILD)\lib\Release\glad.lib;opengl32.lib;glu32.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(CUDA_PATH)\lib\x64\cudart_static.lib;$(SolutionDir)external\lib\glfw3dll.lib;$(SolutionDir)external\lib\glad.lib;opengl32.lib;glu32.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <SubSystem>Console</SubSystem>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /Y /D "$(OPTIX_SAMPLES_BUILD)\bin\Release\*.dll" "$(OutDir)"
+      <Command>xcopy /Y /D "$(SolutionDir)external\bin\*.dll" "$(OutDir)"
 xcopy /Y /D /E /I "$(SolutionDir)ptx" "$(OutDir)ptx"
 xcopy /Y /D /E /I "$(SolutionDir)assets" "$(OutDir)assets"</Command>
       <Message>Copying dependencies, shaders, and assets to output directory</Message>
@@ -161,6 +160,7 @@ xcopy /Y /D /E /I "$(SolutionDir)assets" "$(OutDir)assets"</Command>
     <ClInclude Include="src\core\Application.h" />
     <ClInclude Include="src\core\ConfigLoader.h" />
     <ClInclude Include="src\core\ExporterManager.h" />
+    <ClInclude Include="src\core\PerformanceManager.h" />
     <ClInclude Include="src\utils\stb_image_write.h" />
     <ClInclude Include="src\scene\Camera.h" />
     <ClInclude Include="src\scene\Scene.h" />
@@ -176,6 +176,7 @@ xcopy /Y /D /E /I "$(SolutionDir)assets" "$(OutDir)assets"</Command>
     <ClInclude Include="src\rendering\photon\PhotonMapRenderer.h" />
     <ClInclude Include="src\rendering\photon\PhotonTrajectory.h" />
     <ClInclude Include="src\rendering\photon\TrajectoryExporter.h" />
+    <ClInclude Include="src\rendering\photon\TrajectoryAnimator.h" />
     <ClInclude Include="src\rendering\photon\PhotonMapIO.h" />
     <ClInclude Include="src\rendering\raster\RasterRenderer.h" />
     <ClInclude Include="src\ui\InputCommandManager.h" />

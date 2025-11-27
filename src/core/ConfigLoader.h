@@ -30,6 +30,7 @@ struct DebugConfig
     std::string photon_map_file = "photon_map.txt";  // Photon map file path
     
     bool export_images = false;        // Export rendered images for all modes
+    bool export_metrics = true;        // Export performance metrics (independent of images)
     std::string export_dir = "export"; // Directory for exported files
 };
 

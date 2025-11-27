@@ -12,6 +12,7 @@
 #include "../rendering/photon/PhotonKDTree.h"
 #include "../scene/Camera.h"
 #include "Constants.h"
+#include "ConfigLoader.h"
 
 // Forward declarations
 class OptixManager;
@@ -26,6 +27,9 @@ public:
 
     // Initialize with rendering context
     void initialize(OptixManager* optix, const Camera* cam, Scene* scene);
+    
+    // Set configuration for metrics export
+    void setConfig(const PhotonMappingConfig& config) { currentConfig = config; hasConfig = true; }
 
     // Set photon data (required for rendering modes that use photon maps)
     void setPhotonData(const std::vector<Photon>& global, const std::vector<Photon>& caustic);
@@ -42,11 +46,17 @@ public:
     void exportGlobalPhotonVisualization(const std::string& filename);
     void exportCausticPhotonVisualization(const std::string& filename);
 
+    // Export performance metrics from PerformanceManager
+    void exportPerformanceMetrics(const std::string& filename);
+
     // Configuration
     void setImageSize(unsigned int width, unsigned int height);
     void setGatherRadius(float radius) { gatherRadius = radius; }
     void setBrightnessMultipliers(float indirect, float caustic);
     void setDirectLightingParams(float ambient, float shadowAmbient, float intensity, float attenuation);
+    
+    // Utility
+    void createDirectory(const std::string& path);
 
 private:
     // Rendering context
@@ -84,6 +94,10 @@ private:
     bool initialized = false;
     bool buffersAllocated = false;
     bool photonsUploaded = false;
+    
+    // Configuration for metrics export
+    PhotonMappingConfig currentConfig;
+    bool hasConfig = false;
 
     // Internal helpers
     void allocateBuffers();
@@ -92,6 +106,8 @@ private:
     bool saveBufferToPng(const std::string& filename);
     void copyBufferToHost();
     void applyGammaCorrection();
-    void createDirectory(const std::string& path);
+    void createDirectoryRecursive(const std::string& path);
     void renderPhotonsToBuffer(const std::vector<Photon>& photons, std::vector<unsigned char>& rgbBuffer);
+    std::string generateConfigSummary() const;
+    std::string getPerformanceMetricsPath(const std::string& baseDir);
 };

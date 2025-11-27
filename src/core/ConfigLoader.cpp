@@ -215,6 +215,7 @@ PhotonMappingConfig ConfigLoader::load(const std::string &path)
         extractBoolAttr(element, "load_photon_map", cfg.debug.load_photon_map);
         extractAttr(element, "photon_map_file", cfg.debug.photon_map_file);
         extractBoolAttr(element, "export_images", cfg.debug.export_images);
+        extractBoolAttr(element, "export_metrics", cfg.debug.export_metrics);
         extractAttr(element, "export_dir", cfg.debug.export_dir);
     }
 

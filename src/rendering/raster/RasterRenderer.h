@@ -6,6 +6,7 @@
 #include "../../scene/Camera.h"
 #include "../../scene/Scene.h"
 #include "../photon/AnimatedPhoton.h"
+#include "../photon/Photon.h"
 #include <vector>
 #include <sutil/vec_math.h>
 
@@ -38,6 +39,7 @@ public:
     void setCamera(Camera *cam);
     void setScene(Scene *s);
     void setAnimatedPhotons(const std::vector<AnimatedPhoton> &p);
+    void setPhotons(const std::vector<Photon> &p);
 
     void renderFrame();
 };

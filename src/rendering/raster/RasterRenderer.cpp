@@ -46,6 +46,21 @@ void RasterRenderer::setAnimatedPhotons(const std::vector<AnimatedPhoton> &p)
     photons = p;
 }
 
+void RasterRenderer::setPhotons(const std::vector<Photon> &p)
+{
+    photons.clear();
+    photons.reserve(p.size());
+    for (const auto &photon : p)
+    {
+        AnimatedPhoton ap;
+        ap.position = photon.position;
+        ap.power = photon.power;
+        ap.direction = photon.incidentDir;
+        ap.isActive = true;
+        photons.push_back(ap);
+    }
+}
+
 void RasterRenderer::createShaderProgram()
 {
     const char *vertexShaderSource = R"(

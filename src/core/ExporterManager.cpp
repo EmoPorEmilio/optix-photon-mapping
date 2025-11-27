@@ -1,4 +1,5 @@
 #include "ExporterManager.h"
+#include "PerformanceManager.h"
 #include "../optix/OptixManager.h"
 #include "../scene/Scene.h"
 
@@ -9,7 +10,9 @@
 #include <fstream>
 #include <algorithm>
 #include <cmath>
+#include <ctime>
 #include <direct.h>  // For _mkdir on Windows
+#include <sys/stat.h>
 
 ExporterManager::~ExporterManager()
 {
@@ -58,6 +61,117 @@ void ExporterManager::setDirectLightingParams(float ambient, float shadowAmbient
 void ExporterManager::createDirectory(const std::string& path)
 {
     _mkdir(path.c_str());
+}
+
+void ExporterManager::createDirectoryRecursive(const std::string& path)
+{
+    // Create each directory in the path
+    std::string currentPath;
+    for (size_t i = 0; i < path.size(); ++i)
+    {
+        currentPath += path[i];
+        if (path[i] == '/' || path[i] == '\\' || i == path.size() - 1)
+        {
+            _mkdir(currentPath.c_str());
+        }
+    }
+}
+
+std::string ExporterManager::getPerformanceMetricsPath(const std::string& baseDir)
+{
+    // Create performance_metrics subfolder
+    std::string metricsBaseDir = baseDir + "/performance_metrics";
+    createDirectory(metricsBaseDir);
+    
+    // Get current date
+    auto now = std::chrono::system_clock::now();
+    auto time_t_now = std::chrono::system_clock::to_time_t(now);
+    std::tm* localTime = std::localtime(&time_t_now);
+    
+    // Format: MM-DD-YYYY
+    char dateStr[20];
+    std::strftime(dateStr, sizeof(dateStr), "%m-%d-%Y", localTime);
+    
+    // Create date folder
+    std::string dateDir = metricsBaseDir + "/" + dateStr;
+    createDirectory(dateDir);
+    
+    // Find next available ID number
+    int fileId = 1;
+    while (true)
+    {
+        std::string testPath = dateDir + "/" + std::to_string(fileId) + ".txt";
+        struct stat buffer;
+        if (stat(testPath.c_str(), &buffer) != 0)
+        {
+            // File doesn't exist, use this ID
+            return testPath;
+        }
+        fileId++;
+    }
+}
+
+std::string ExporterManager::generateConfigSummary() const
+{
+    if (!hasConfig)
+        return "";
+    
+    std::ostringstream oss;
+    oss << "================================================================================\n";
+    oss << "                            CONFIGURATION USED                                  \n";
+    oss << "================================================================================\n";
+    
+    oss << "\n[Photon Mapping]\n";
+    oss << "  Max Photons: " << currentConfig.max_photons << "\n";
+    oss << "  Collision Radius: " << currentConfig.photon_collision_radius << "\n";
+    
+    oss << "\n[Animation]\n";
+    oss << "  Enabled: " << (currentConfig.animation.enabled ? "true" : "false") << "\n";
+    oss << "  Speed: " << currentConfig.animation.photonSpeed << "\n";
+    oss << "  Emission Interval: " << currentConfig.animation.emissionInterval << "\n";
+    
+    oss << "\n[Debug]\n";
+    oss << "  Record Trajectories: " << (currentConfig.debug.record_trajectories ? "true" : "false") << "\n";
+    oss << "  Save Photon Map: " << (currentConfig.debug.save_photon_map ? "true" : "false") << "\n";
+    oss << "  Load Photon Map: " << (currentConfig.debug.load_photon_map ? "true" : "false") << "\n";
+    oss << "  Photon Map File: " << currentConfig.debug.photon_map_file << "\n";
+    oss << "  Export Images: " << (currentConfig.debug.export_images ? "true" : "false") << "\n";
+    oss << "  Export Metrics: " << (currentConfig.debug.export_metrics ? "true" : "false") << "\n";
+    oss << "  Export Dir: " << currentConfig.debug.export_dir << "\n";
+    
+    oss << "\n[Gathering]\n";
+    oss << "  Indirect Radius: " << currentConfig.gathering.indirect_radius << "\n";
+    oss << "  Caustic Radius: " << currentConfig.gathering.caustic_radius << "\n";
+    oss << "  Indirect Brightness: " << currentConfig.gathering.indirect_brightness << "\n";
+    oss << "  Caustic Brightness: " << currentConfig.gathering.caustic_brightness << "\n";
+    
+    oss << "\n[Direct Lighting]\n";
+    oss << "  Ambient: " << currentConfig.direct_lighting.ambient << "\n";
+    oss << "  Shadow Ambient: " << currentConfig.direct_lighting.shadow_ambient << "\n";
+    oss << "  Intensity: " << currentConfig.direct_lighting.intensity << "\n";
+    oss << "  Attenuation: " << currentConfig.direct_lighting.attenuation_factor << "\n";
+    
+    oss << "\n[Specular]\n";
+    oss << "  Max Depth: " << currentConfig.specular.max_recursion_depth << "\n";
+    oss << "  Glass IOR: " << currentConfig.specular.glass_ior << "\n";
+    oss << "  Mirror Reflectivity: " << currentConfig.specular.mirror_reflectivity << "\n";
+    oss << "  Fresnel Min: " << currentConfig.specular.fresnel_min << "\n";
+    oss << "  Glass Tint: (" << currentConfig.specular.glass_tint.x << ", " 
+                            << currentConfig.specular.glass_tint.y << ", " 
+                            << currentConfig.specular.glass_tint.z << ")\n";
+    
+    oss << "\n[Weights]\n";
+    oss << "  Direct: " << currentConfig.weights.direct << "\n";
+    oss << "  Indirect: " << currentConfig.weights.indirect << "\n";
+    oss << "  Caustics: " << currentConfig.weights.caustics << "\n";
+    oss << "  Specular: " << currentConfig.weights.specular << "\n";
+    
+    oss << "\n[Scene Objects]\n";
+    oss << "  Spheres: " << currentConfig.spheres.size() << "\n";
+    oss << "  Meshes: " << currentConfig.meshes.size() << "\n";
+    oss << "  Quads: " << currentConfig.quads.size() << "\n";
+    
+    return oss.str();
 }
 
 void ExporterManager::allocateBuffers()
@@ -447,5 +561,41 @@ void ExporterManager::exportAll(const std::string& outputDir)
     createDirectory(outputDir);
     exportPhotonMap(outputDir + "/photon_map.txt");
     exportAllRenderModes(outputDir);
+    
+    // Export performance metrics to dated subfolder
+    exportPerformanceMetrics(outputDir);
+    
     std::cout << "=== Done ===" << std::endl;
+}
+
+void ExporterManager::exportPerformanceMetrics(const std::string& baseDir)
+{
+    if (!PerformanceManager::instance().hasMetrics())
+    {
+        std::cout << "ExporterManager: No performance metrics to export" << std::endl;
+        return;
+    }
+
+    // Print summary to console
+    PerformanceManager::instance().printSummary();
+
+    // Get the dated path (creates folders automatically)
+    std::string metricsPath = getPerformanceMetricsPath(baseDir);
+
+    std::ofstream file(metricsPath);
+    if (!file.is_open())
+    {
+        std::cerr << "ExporterManager: Failed to open " << metricsPath << " for writing" << std::endl;
+        return;
+    }
+
+    // Generate config summary
+    std::string configSummary = generateConfigSummary();
+    
+    // Generate and write the full report with config
+    std::string report = PerformanceManager::instance().generateMetricsReport(configSummary);
+    file << report;
+    file.close();
+
+    std::cout << "  Saved: " << metricsPath << std::endl;
 }

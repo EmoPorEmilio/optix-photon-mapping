@@ -53,11 +53,21 @@ struct AnimatedPhoton
         pathColors.push_back(power);
     }
 
-    // Get visual color for display
-    // Animated mode: photons travel from light source, always WHITE
-    // For color-modulated photon visualization, use instant mode + PhotonMapRenderer
+    // Get visual color for display based on photon power
     float3 getDisplayColor() const
     {
-        return make_float3(1.0f, 1.0f, 1.0f); // White photons from light
+        // Normalize power to visible range
+        float maxPow = fmaxf(fmaxf(power.x, power.y), power.z);
+        if (maxPow > 0.0f)
+        {
+            // Boost visibility while preserving color ratio
+            float scale = 1.0f / maxPow;
+            return make_float3(
+                fminf(power.x * scale, 1.0f),
+                fminf(power.y * scale, 1.0f),
+                fminf(power.z * scale, 1.0f)
+            );
+        }
+        return make_float3(1.0f, 1.0f, 1.0f);
     }
 };

@@ -20,7 +20,6 @@ param(
 # ==========================
 $CUDA_PATH = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.0"
 $OPTIX_PATH = "C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.0.0"
-$OPTIX_SAMPLES_BUILD = "C:\Users\emili\Desktop\proyectos\optix_samples_build"
 
 # ==========================
 
@@ -33,7 +32,6 @@ Write-Host "=== OptiX Photon Mapping - Build ===" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "CUDA:   $CUDA_PATH" -ForegroundColor Gray
 Write-Host "OptiX:  $OPTIX_PATH" -ForegroundColor Gray
-Write-Host "Build:  $OPTIX_SAMPLES_BUILD" -ForegroundColor Gray
 Write-Host ""
 
 # Validate paths
@@ -97,9 +95,9 @@ if (-not $SkipCuda) {
         "-I$optixInclude",
         "-I$CUDA_PATH\include",
         "-I$optixSdk\cuda",
-        "-I$optixSdk\sutil",
         "-I$optixSdk",
         "-I$projectRoot",
+        "-I$projectRoot\external",
         "-I$projectRoot\src",
         "-I$projectRoot\src\cuda",
         "-I$projectRoot\src\cuda\photon_emission",
@@ -162,7 +160,6 @@ if (-not $SkipBuild) {
         /p:Platform=x64 `
         /p:CUDA_PATH="$CUDA_PATH" `
         /p:OPTIX_PATH="$OPTIX_PATH" `
-        /p:OPTIX_SAMPLES_BUILD="$OPTIX_SAMPLES_BUILD" `
         /v:minimal
     
     if ($LASTEXITCODE -eq 0) {
