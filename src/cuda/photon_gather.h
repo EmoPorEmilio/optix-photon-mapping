@@ -7,9 +7,15 @@
 #include "../rendering/photon/Photon.h"
 #include "../rendering/photon/PhotonKDTreeDevice.h"
 
-// Constants for radiance estimation
-#define PM_INV_PI 0.31830988618f   // 1/π
-#define PM_CONE_NORMALIZATION 3.0f // Cone filter normalization factor
+//=============================================================================
+// Constants for radiance estimation (Jensen's algorithm)
+// Jensen's formula: L = (ρ/π) * (k/(π*r²)) * Σ(Φ_p * w_p) for Lambertian surfaces
+// where k = 3 for the cone filter w(d) = 1 - d/r
+//=============================================================================
+#define PM_PI 3.14159265358979323846f
+#define PM_INV_PI 0.31830988618379067154f  // 1/π - Lambertian BRDF normalization
+#define PM_CONE_FILTER_K 3.0f              // Cone filter normalization factor
+#define PM_CAUSTIC_RADIUS_MULT 0.5f        // Caustics use tighter gather radius
 
 // Compute geometric triangle normal from vertex positions (shared utility)
 static __forceinline__ __device__ float3 computeTriangleNormal(const float3 &ray_dir)
@@ -34,7 +40,8 @@ static __forceinline__ __device__ float3 computeTriangleNormal(const float3 &ray
 }
 
 // Linear photon gathering - O(n) fallback when no acceleration structure is available
-// Jensen's radiance estimation: L = (albedo/π) * (3/(π*r²)) * Σ(Φ_p * K)
+// Jensen's radiance estimation with cone filter: L = (k / (π*r²)) * Σ(Φ_p * w_p)
+// where k=3 for the (1-d/r) cone filter weight function
 static __forceinline__ __device__ float3 gatherPhotonsLinear(
     const float3 &hit_point,
     const float3 &normal,
@@ -68,10 +75,10 @@ static __forceinline__ __device__ float3 gatherPhotonsLinear(
         }
     }
 
-    // Apply Jensen's radiance estimation formula
-    // Cone filter normalization (factor of 3) and 1/π for diffuse BRDF
-    float area = 3.14159265f * radius_sq;
-    float3 radiance = flux_sum * (PM_CONE_NORMALIZATION / area) * PM_INV_PI;
+    // Apply Jensen's radiance estimation formula: L = (k/(π*r²)) * (1/π) * Σ(Φ_p * w_p)
+    // The (1/π) factor is the Lambertian BRDF normalization; albedo applied separately
+    float area = PM_PI * radius_sq;
+    float3 radiance = flux_sum * (PM_CONE_FILTER_K / area) * PM_INV_PI;
 
     return radiance;
 }
@@ -130,8 +137,9 @@ static __forceinline__ __device__ float3 gatherPhotonsKDTree(
             stack[stack_ptr++] = static_cast<unsigned int>(farChild);
     }
 
-    float area = 3.14159265f * radius_sq;
-    float3 radiance = flux_sum * (PM_CONE_NORMALIZATION / area) * PM_INV_PI;
+    // Apply Jensen's radiance estimation formula with Lambertian BRDF normalization
+    float area = PM_PI * radius_sq;
+    float3 radiance = flux_sum * (PM_CONE_FILTER_K / area) * PM_INV_PI;
     return radiance;
 }
 

@@ -1,7 +1,9 @@
 #include "CombinedRenderer.h"
+#include "../../core/Constants.h"
 #include <iostream>
 #include <fstream>
 #include <algorithm>
+#include <cmath>
 
 CombinedRenderer::CombinedRenderer(GLFWwindow* win, const ViewportRect& vp)
     : window(win), viewport(vp), scene(nullptr), camera(nullptr), optixManager(nullptr)
@@ -216,10 +218,15 @@ void CombinedRenderer::combineBuffers(unsigned int width, unsigned int height)
                 h_caustic[i].z * causticWeight;
         }
 
-        // Clamp
+        // Clamp to [0, 1] in linear space
         r = std::min(1.0f, std::max(0.0f, r));
         g = std::min(1.0f, std::max(0.0f, g));
         b = std::min(1.0f, std::max(0.0f, b));
+
+        // Apply gamma correction (sRGB) at final output stage
+        r = std::pow(r, Constants::Render::INV_GAMMA);
+        g = std::pow(g, Constants::Render::INV_GAMMA);
+        b = std::pow(b, Constants::Render::INV_GAMMA);
 
         h_combinedBuffer[i] = make_float4(r, g, b, 1.0f);
     }
@@ -243,7 +250,7 @@ void CombinedRenderer::render()
         cudaMemset(d_indirectBuffer, 0, width * height * sizeof(float4));
 
     if (causticPhotonCount > 0)
-        optixManager->launchCausticLighting(width, height, *camera, d_causticPhotonMap, causticPhotonCount, gatherRadius * 0.5f, causticBrightness, causticKDTree.getDeviceTree(), d_causticBuffer);
+        optixManager->launchCausticLighting(width, height, *camera, d_causticPhotonMap, causticPhotonCount, gatherRadius * Constants::Photon::CAUSTIC_RADIUS_MULTIPLIER, causticBrightness, causticKDTree.getDeviceTree(), d_causticBuffer);
     else
         cudaMemset(d_causticBuffer, 0, width * height * sizeof(float4));
 
@@ -290,7 +297,7 @@ void CombinedRenderer::exportToImage(const std::string& filename)
         cudaMemset(d_indirectBuffer, 0, width * height * sizeof(float4));
 
     if (causticPhotonCount > 0)
-        optixManager->launchCausticLighting(width, height, *camera, d_causticPhotonMap, causticPhotonCount, gatherRadius * 0.5f, causticBrightness, causticKDTree.getDeviceTree(), d_causticBuffer);
+        optixManager->launchCausticLighting(width, height, *camera, d_causticPhotonMap, causticPhotonCount, gatherRadius * Constants::Photon::CAUSTIC_RADIUS_MULTIPLIER, causticBrightness, causticKDTree.getDeviceTree(), d_causticBuffer);
     else
         cudaMemset(d_causticBuffer, 0, width * height * sizeof(float4));
 

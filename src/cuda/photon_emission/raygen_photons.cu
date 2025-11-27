@@ -1,12 +1,20 @@
-
-
 #include <optix.h>
 #include <sutil/vec_math.h>
 #include "photon_launch_params.h"
 #include "photon_rng.h"
 
+#ifndef PHOTON_PARAMS_DEFINED
 extern "C" __constant__ PhotonLaunchParams params;
+#endif
 
+// Forward declaration - defined in combined file
+__device__ __forceinline__ void recordTrajectoryEvent(
+    unsigned int photon_idx, int event_type, const float3 &position,
+    const float3 &direction, const float3 &power, int material_type);
+
+//=============================================================================
+// Photon Emission Raygen Program
+//=============================================================================
 extern "C" __global__ void __raygen__photon_emitter()
 {
     const uint3 idx = optixGetLaunchIndex();
@@ -17,9 +25,16 @@ extern "C" __global__ void __raygen__photon_emitter()
     if (photon_idx >= params.num_photons)
         return;
 
+    // Initialize trajectory for this photon (if recording)
+    if (params.record_trajectories && params.trajectories_out)
+    {
+        params.trajectories_out[photon_idx].photon_id = photon_idx;
+        params.trajectories_out[photon_idx].event_count = 0;
+    }
+
     const QuadLight light = params.light;
 
-    // Initial emission from the light.
+    // Initial emission from the light
     unsigned int rngState = photon_idx * 747796405u + 2891336453u;
     float u0 = ph_rand(rngState);
     float u1 = ph_rand(rngState);
@@ -29,23 +44,26 @@ extern "C" __global__ void __raygen__photon_emitter()
     float3 origin, direction;
     light.samplePhotonEmission(u0, u1, u2, u3, origin, direction);
 
-    // Path throughput starts as per-photon power.
+    // Path throughput starts as per-photon power
     float3 throughput = params.photon_power;
+
+    // Record EMITTED event
+    recordTrajectoryEvent(photon_idx, EVENT_EMITTED, origin, direction, throughput);
 
     unsigned int p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11;
 
-    // Bounce loop driven from raygen.
+    // Bounce loop driven from raygen
     // Payload 9 bit layout: bit 31 = prevWasSpecular, bit 30 = insideFlag, bits 0-29 = depth
     unsigned int depth = 0u;
     unsigned int insideFlag = 0u;
     unsigned int prevWasSpecular = 0u;
-    
+
     for (;;)
     {
         // Pack state into payload 9
         unsigned int packedState = (prevWasSpecular << 31) | (insideFlag << 30) | (depth & 0x3fffffffu);
-        
-        // Pack payload for this segment.
+
+        // Pack payload for this segment
         p0  = __float_as_uint(throughput.x);
         p1  = __float_as_uint(throughput.y);
         p2  = __float_as_uint(throughput.z);
@@ -56,8 +74,8 @@ extern "C" __global__ void __raygen__photon_emitter()
         p7  = __float_as_uint(direction.y);
         p8  = __float_as_uint(direction.z);
         p9  = packedState;
-        p10 = photon_idx;       // for RNG in closest hit
-        p11 = 1u;               // continue flag (1 = continue, 0 = terminate)
+        p10 = photon_idx;  // for RNG and trajectory access in closest hit
+        p11 = 1u;          // continue flag (1 = continue, 0 = terminate)
 
         unsigned int flags = OPTIX_RAY_FLAG_DISABLE_ANYHIT;
         optixTrace(params.handle,
@@ -73,7 +91,7 @@ extern "C" __global__ void __raygen__photon_emitter()
                    0,
                    p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11);
 
-        // Unpack updated state from payload.
+        // Unpack updated state from payload
         throughput.x = __uint_as_float(p0);
         throughput.y = __uint_as_float(p1);
         throughput.z = __uint_as_float(p2);
@@ -83,16 +101,23 @@ extern "C" __global__ void __raygen__photon_emitter()
         direction.x  = __uint_as_float(p6);
         direction.y  = __uint_as_float(p7);
         direction.z  = __uint_as_float(p8);
-        
+
         // Unpack state from payload 9
         packedState = p9;
         depth = packedState & 0x3fffffffu;
         insideFlag = (packedState >> 30) & 0x1u;
         prevWasSpecular = (packedState >> 31) & 0x1u;
-        
+
         unsigned int cont = p11;
 
-        if (!cont || depth >= params.max_depth)
+        if (!cont)
             break;
+
+        if (depth >= params.max_depth)
+        {
+            // Record MAX_DEPTH termination event
+            recordTrajectoryEvent(photon_idx, EVENT_MAX_DEPTH, origin, direction, throughput);
+            break;
+        }
     }
 }

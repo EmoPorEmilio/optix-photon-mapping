@@ -1,11 +1,10 @@
-
-
 #pragma once
 
 #include <optix.h>
 #include <sutil/vec_math.h>
 #include "../../lighting/QuadLight.h"
 #include "../../rendering/photon/Photon.h"
+#include "../../rendering/photon/PhotonTrajectory.h"
 #include "../../scene/Material.h"
 
 // Simple sphere geometry description for the photon pass.
@@ -17,25 +16,24 @@ struct PhotonSphereData
 
 struct PhotonLaunchParams
 {
-
     OptixTraversableHandle handle;
     QuadLight light;
 
     // Per-photon launch configuration
     unsigned int num_photons;
-    float3 photon_power; // power per emitted photon (before surface interactions)
+    float3 photon_power;  // power per emitted photon (before surface interactions)
 
     // Scene data needed in the photon pass
     unsigned int quadLightStartIndex;
 
     // Original per-triangle colors (still available if needed for debugging/visualization)
-    float3* triangle_colors;   // same layout as Scene::exportTriangleColors()
+    float3* triangle_colors;  // same layout as Scene::exportTriangleColors()
 
-    // New material data for photon transport.
-    Material* triangle_materials; // one material per triangle
-    Material  sphere_materials[2]; // two spheres in this scene
+    // Material data for photon transport
+    Material* triangle_materials;  // one material per triangle
+    Material sphere_materials[2];  // two spheres in this scene
 
-    // Analytic sphere geometry for photon pass (mirrors what's used in the render pass).
+    // Analytic sphere geometry for photon pass
     PhotonSphereData sphere1;
     PhotonSphereData sphere2;
 
@@ -49,8 +47,14 @@ struct PhotonLaunchParams
     Photon* caustic_photons_out;
     CUdeviceptr caustic_photon_counter;
 
+    //=========================================================================
+    // Trajectory Recording (for debugging/visualization)
+    //=========================================================================
+    bool record_trajectories;           // Enable full trajectory recording
+    PhotonTrajectory* trajectories_out; // Output buffer (one per photon)
 
-    __host__ __device__ PhotonLaunchParams() {}
+    __host__ __device__ PhotonLaunchParams() 
+        : record_trajectories(false), trajectories_out(nullptr) {}
 };
 
 

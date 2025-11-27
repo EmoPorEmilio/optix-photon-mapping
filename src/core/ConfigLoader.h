@@ -22,6 +22,20 @@ struct AnimationConfig
     float emissionInterval = 0.5f; // Seconds between photon emissions
 };
 
+// Debug settings for trajectory recording and photon map I/O
+struct DebugConfig
+{
+    bool record_trajectories = false;  // Record full photon paths
+    std::string trajectory_file = "photon_trajectories.txt";  // Trajectory output file
+    
+    bool save_photon_map = false;      // Save photon map after tracing
+    bool load_photon_map = false;      // Load photon map from file instead of tracing
+    std::string photon_map_file = "photon_map.txt";  // Photon map file path
+    
+    bool export_images = false;        // Export rendered images for all modes
+    std::string export_dir = "export"; // Directory for exported files
+};
+
 // Photon gathering parameters
 struct GatheringConfig
 {
@@ -110,6 +124,7 @@ struct PhotonMappingConfig
     float photon_collision_radius = 5.0f;
 
     AnimationConfig animation;
+    DebugConfig debug;
     GatheringConfig gathering;
     DirectLightingConfig direct_lighting;
     SpecularConfig specular;

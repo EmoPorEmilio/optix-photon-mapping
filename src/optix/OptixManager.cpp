@@ -4,6 +4,26 @@
 #include "../scene/Material.h"
 #include "../cuda/photon_emission/photon_launch_params.h"
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+// Get the directory where the executable is located
+static std::string getExeDir()
+{
+#ifdef _WIN32
+    char path[MAX_PATH];
+    GetModuleFileNameA(NULL, path, MAX_PATH);
+    std::string fullPath(path);
+    size_t lastSlash = fullPath.find_last_of("\\/");
+    if (lastSlash != std::string::npos)
+    {
+        return fullPath.substr(0, lastSlash + 1);
+    }
+#endif
+    return "";
+}
+
 bool OptixManager::initialize()
 {
     if (initialized)
@@ -26,7 +46,8 @@ bool OptixManager::loadModule()
     pipeline_compile_options.exceptionFlags = OPTIX_EXCEPTION_FLAG_STACK_OVERFLOW | OPTIX_EXCEPTION_FLAG_TRACE_DEPTH;
     pipeline_compile_options.pipelineLaunchParamsVariableName = "params";
     pipeline_compile_options.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE | OPTIX_PRIMITIVE_TYPE_FLAGS_CUSTOM;
-    module = createOptixModule(context, module_options, &pipeline_compile_options, "ptx/raytrace.optixir");
+    std::string ptxPath = getExeDir() + "ptx/raytrace.optixir";
+    module = createOptixModule(context, module_options, &pipeline_compile_options, ptxPath.c_str());
     return true;
 }
 
@@ -49,7 +70,8 @@ bool OptixManager::loadPhotonModule()
     photon_pipeline_options.pipelineLaunchParamsVariableName = "params";
     photon_pipeline_options.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE | OPTIX_PRIMITIVE_TYPE_FLAGS_CUSTOM;
 
-    photon_module = createOptixModule(context, module_options, &photon_pipeline_options, "ptx/photon_emission.optixir");
+    std::string photonPtxPath = getExeDir() + "ptx/photon_emission.optixir";
+    photon_module = createOptixModule(context, module_options, &photon_pipeline_options, photonPtxPath.c_str());
     return true;
 }
 
@@ -262,6 +284,115 @@ void OptixManager::launchPhotonPass(unsigned int num_photons, const QuadLight &l
               << out_caustic_count << " caustic hits" << std::endl;
 }
 
+void OptixManager::launchPhotonPassWithTrajectories(unsigned int num_photons, const QuadLight &light,
+                                                    unsigned int quadLightStartIndex,
+                                                    CUdeviceptr &out_photons, unsigned int &out_count,
+                                                    CUdeviceptr &out_caustic_photons, unsigned int &out_caustic_count,
+                                                    std::vector<PhotonTrajectory> &out_trajectories)
+{
+    if (!photon_pipeline)
+    {
+        std::cerr << "Photon pipeline not created!" << std::endl;
+        return;
+    }
+
+    // Allocate global photon buffer
+    if (!d_photon_buffer)
+        CUDA_CHECK(cudaMalloc((void **)&d_photon_buffer, num_photons * sizeof(Photon)));
+
+    if (!d_photon_counter)
+        CUDA_CHECK(cudaMalloc((void **)&d_photon_counter, sizeof(unsigned int)));
+
+    // Allocate caustic photon buffer
+    if (!d_caustic_photon_buffer)
+        CUDA_CHECK(cudaMalloc((void **)&d_caustic_photon_buffer, num_photons * sizeof(Photon)));
+
+    if (!d_caustic_photon_counter)
+        CUDA_CHECK(cudaMalloc((void **)&d_caustic_photon_counter, sizeof(unsigned int)));
+
+    // Allocate trajectory buffer
+    if (trajectory_buffer_size < num_photons)
+    {
+        if (d_trajectory_buffer)
+            CUDA_CHECK(cudaFree(reinterpret_cast<void *>(d_trajectory_buffer)));
+        
+        CUDA_CHECK(cudaMalloc((void **)&d_trajectory_buffer, num_photons * sizeof(PhotonTrajectory)));
+        trajectory_buffer_size = num_photons;
+    }
+    
+    // Initialize trajectory buffer to zero
+    CUDA_CHECK(cudaMemset(reinterpret_cast<void *>(d_trajectory_buffer), 0, num_photons * sizeof(PhotonTrajectory)));
+
+    // Reset counters
+    unsigned int zero = 0;
+    CUDA_CHECK(cudaMemcpy((void *)d_photon_counter, &zero, sizeof(unsigned int), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy((void *)d_caustic_photon_counter, &zero, sizeof(unsigned int), cudaMemcpyHostToDevice));
+
+    PhotonLaunchParams params = {};
+
+    params.handle = ias_handle;
+    params.light = light;
+    params.num_photons = num_photons;
+    params.photon_power = light.getIntensity() / static_cast<float>(num_photons);
+    params.quadLightStartIndex = quadLightStartIndex;
+    params.triangle_colors = reinterpret_cast<float3 *>(d_triangle_colors);
+    params.triangle_materials = reinterpret_cast<Material *>(d_triangle_materials);
+
+    // Sphere materials
+    params.sphere_materials[0].type = MATERIAL_TRANSMISSIVE;
+    params.sphere_materials[0].albedo = make_float3(1.0f, 1.0f, 1.0f);
+    params.sphere_materials[0].diffuseProb = 0.0f;
+    params.sphere_materials[0].transmissiveCoeff = 1.0f;
+
+    params.sphere_materials[1].type = MATERIAL_SPECULAR;
+    params.sphere_materials[1].albedo = make_float3(1.0f, 1.0f, 1.0f);
+    params.sphere_materials[1].diffuseProb = 0.0f;
+    params.sphere_materials[1].transmissiveCoeff = 0.0f;
+
+    params.sphere1.center = make_float3(185.0f, 82.5f, 169.0f);
+    params.sphere1.radius = 82.5f;
+    params.sphere2.center = make_float3(368.0f, 82.5f, 351.0f);
+    params.sphere2.radius = 82.5f;
+    params.max_depth = 8;
+
+    // Output buffers
+    params.photons_out = reinterpret_cast<Photon *>(d_photon_buffer);
+    params.photon_counter = d_photon_counter;
+    params.caustic_photons_out = reinterpret_cast<Photon *>(d_caustic_photon_buffer);
+    params.caustic_photon_counter = d_caustic_photon_counter;
+
+    // Enable trajectory recording
+    params.record_trajectories = true;
+    params.trajectories_out = reinterpret_cast<PhotonTrajectory *>(d_trajectory_buffer);
+
+    CUdeviceptr d_params;
+    CUDA_CHECK(cudaMalloc((void **)&d_params, sizeof(PhotonLaunchParams)));
+    CUDA_CHECK(cudaMemcpy((void *)d_params, &params, sizeof(PhotonLaunchParams), cudaMemcpyHostToDevice));
+
+    // Launch
+    OPTIX_CHECK(optixLaunch(photon_pipeline, stream, d_params, sizeof(PhotonLaunchParams), &photon_sbt, num_photons, 1, 1));
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+
+    // Retrieve photon counts
+    CUDA_CHECK(cudaMemcpy(&out_count, (void *)d_photon_counter, sizeof(unsigned int), cudaMemcpyDeviceToHost));
+    if (out_count > num_photons) out_count = num_photons;
+    out_photons = d_photon_buffer;
+
+    CUDA_CHECK(cudaMemcpy(&out_caustic_count, (void *)d_caustic_photon_counter, sizeof(unsigned int), cudaMemcpyDeviceToHost));
+    if (out_caustic_count > num_photons) out_caustic_count = num_photons;
+    out_caustic_photons = d_caustic_photon_buffer;
+
+    // Copy trajectories back to host
+    out_trajectories.resize(num_photons);
+    CUDA_CHECK(cudaMemcpy(out_trajectories.data(), reinterpret_cast<void *>(d_trajectory_buffer),
+                          num_photons * sizeof(PhotonTrajectory), cudaMemcpyDeviceToHost));
+
+    CUDA_CHECK(cudaFree((void *)d_params));
+
+    std::cout << "Launched " << num_photons << " photons with trajectory recording" << std::endl;
+    std::cout << "  Stored: " << out_count << " global + " << out_caustic_count << " caustic hits" << std::endl;
+}
+
 void OptixManager::cleanup()
 {
     if (d_triangle_vertices)
@@ -289,6 +420,8 @@ void OptixManager::cleanup()
         CUDA_CHECK(cudaFree(reinterpret_cast<void *>(d_photon_buffer)));
     if (d_photon_counter)
         CUDA_CHECK(cudaFree(reinterpret_cast<void *>(d_photon_counter)));
+    if (d_trajectory_buffer)
+        CUDA_CHECK(cudaFree(reinterpret_cast<void *>(d_trajectory_buffer)));
     if (photon_module)
         OPTIX_CHECK(optixModuleDestroy(photon_module));
     if (photon_pipeline)
@@ -316,7 +449,8 @@ bool OptixManager::loadDirectModule()
     direct_pipeline_options.pipelineLaunchParamsVariableName = "params";
     direct_pipeline_options.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE | OPTIX_PRIMITIVE_TYPE_FLAGS_CUSTOM;
 
-    direct_module = createOptixModule(context, module_options, &direct_pipeline_options, "ptx/direct_lighting.optixir");
+    std::string directPtxPath = getExeDir() + "ptx/direct_lighting.optixir";
+    direct_module = createOptixModule(context, module_options, &direct_pipeline_options, directPtxPath.c_str());
     return direct_module != nullptr;
 }
 
@@ -576,7 +710,8 @@ bool OptixManager::loadIndirectModule()
     indirect_pipeline_options.pipelineLaunchParamsVariableName = "params";
     indirect_pipeline_options.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE | OPTIX_PRIMITIVE_TYPE_FLAGS_CUSTOM;
 
-    indirect_module = createOptixModule(context, module_options, &indirect_pipeline_options, "ptx/indirect_lighting.optixir");
+    std::string indirectPtxPath = getExeDir() + "ptx/indirect_lighting.optixir";
+    indirect_module = createOptixModule(context, module_options, &indirect_pipeline_options, indirectPtxPath.c_str());
     return indirect_module != nullptr;
 }
 
@@ -782,13 +917,7 @@ void OptixManager::launchIndirectLighting(unsigned int width, unsigned int heigh
     params.photon_count = photon_count;
     params.gather_radius = gather_radius;
     params.brightness_multiplier = brightness_multiplier;
-    params.kdtree = kdtree;
-
-    // Initialize kd-tree as invalid (use linear fallback)
-    params.kdtree.nodes = nullptr;
-    params.kdtree.num_nodes = 0;
-    params.kdtree.max_depth = 0;
-    params.kdtree.valid = false;
+    params.kdtree = kdtree;  // Use kd-tree for O(log n) photon queries
 
     params.quadLightStartIndex = quadLightStartIndex;
 
@@ -816,7 +945,8 @@ bool OptixManager::loadCausticModule()
     caustic_pipeline_options.pipelineLaunchParamsVariableName = "params";
     caustic_pipeline_options.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE | OPTIX_PRIMITIVE_TYPE_FLAGS_CUSTOM;
 
-    caustic_module = createOptixModule(context, module_options, &caustic_pipeline_options, "ptx/caustic_lighting.optixir");
+    std::string causticPtxPath = getExeDir() + "ptx/caustic_lighting.optixir";
+    caustic_module = createOptixModule(context, module_options, &caustic_pipeline_options, causticPtxPath.c_str());
     return caustic_module != nullptr;
 }
 
@@ -1015,13 +1145,7 @@ void OptixManager::launchCausticLighting(unsigned int width, unsigned int height
     params.caustic_photon_count = caustic_count;
     params.gather_radius = gather_radius;
     params.brightness_multiplier = brightness_multiplier;
-    params.caustic_kdtree = kdtree;
-
-    // Initialize kd-tree as invalid (use linear fallback)
-    params.caustic_kdtree.nodes = nullptr;
-    params.caustic_kdtree.num_nodes = 0;
-    params.caustic_kdtree.max_depth = 0;
-    params.caustic_kdtree.valid = false;
+    params.caustic_kdtree = kdtree;  // Use kd-tree for O(log n) caustic queries
 
     params.quadLightStartIndex = quadLightStartIndex;
 
@@ -1049,7 +1173,8 @@ bool OptixManager::loadSpecularModule()
     specular_pipeline_options.pipelineLaunchParamsVariableName = "params";
     specular_pipeline_options.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE | OPTIX_PRIMITIVE_TYPE_FLAGS_CUSTOM;
 
-    specular_module = createOptixModule(context, module_options, &specular_pipeline_options, "ptx/specular_lighting.optixir");
+    std::string specularPtxPath = getExeDir() + "ptx/specular_lighting.optixir";
+    specular_module = createOptixModule(context, module_options, &specular_pipeline_options, specularPtxPath.c_str());
     return specular_module != nullptr;
 }
 
@@ -1261,16 +1386,7 @@ void OptixManager::launchSpecularLighting(unsigned int width, unsigned int heigh
 
     params.quadLightStartIndex = quadLightStartIndex;
 
-    // Initialize kd-trees as invalid (use linear fallback)
-    params.global_kdtree.nodes = nullptr;
-    params.global_kdtree.num_nodes = 0;
-    params.global_kdtree.max_depth = 0;
-    params.global_kdtree.valid = false;
-
-    params.caustic_kdtree.nodes = nullptr;
-    params.caustic_kdtree.num_nodes = 0;
-    params.caustic_kdtree.max_depth = 0;
-    params.caustic_kdtree.valid = false;
+    // kd-trees already set above - use them for O(log n) photon queries
 
     // Configurable specular parameters
     params.max_recursion_depth = spec_params.max_recursion_depth;

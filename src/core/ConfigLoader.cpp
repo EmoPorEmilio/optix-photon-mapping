@@ -6,9 +6,10 @@
 #include <algorithm>
 #include <cctype>
 
-// Simple XML parsing helpers - not a full XML parser, but sufficient for our config file
+//=============================================================================
+// Simple XML parsing helpers (not a full parser, but sufficient for config)
+//=============================================================================
 
-// Trim whitespace from both ends of a string
 static std::string trim(const std::string &s)
 {
     size_t start = 0;
@@ -20,25 +21,22 @@ static std::string trim(const std::string &s)
     return s.substr(start, end - start);
 }
 
-// Extract content between <tag ...>...</tag> (handles tags with attributes)
+// Extract content between <tag>...</tag>
 static bool extractTagContent(const std::string &text, const std::string &tag, std::string &out)
 {
     std::string openTagStart = "<" + tag;
     std::string closeTag = "</" + tag + ">";
 
-    // Find opening tag (may have attributes)
     size_t tagStart = text.find(openTagStart);
     if (tagStart == std::string::npos)
         return false;
 
-    // Find the end of the opening tag (the '>')
     size_t tagEnd = text.find(">", tagStart);
     if (tagEnd == std::string::npos)
         return false;
 
-    // Check for self-closing tag
     if (tagEnd > 0 && text[tagEnd - 1] == '/')
-        return false;  // Self-closing tags have no content
+        return false; // Self-closing
 
     size_t contentStart = tagEnd + 1;
     size_t end = text.find(closeTag, contentStart);
@@ -49,130 +47,112 @@ static bool extractTagContent(const std::string &text, const std::string &tag, s
     return true;
 }
 
-// Extract a numeric value from <tag>value</tag>
-template <typename T>
-static bool extractNumber(const std::string &text, const std::string &tag, T &out)
+// Find the entire element string for a tag (including attributes)
+static bool findElement(const std::string &text, const std::string &tag, std::string &element, size_t startFrom = 0)
 {
-    std::string content;
-    if (!extractTagContent(text, tag, content))
-        return false;
-
-    std::stringstream ss(content);
-    T value;
-    ss >> value;
-    if (ss.fail())
-        return false;
-
-    out = value;
-    return true;
-}
-
-// Extract a boolean value from <tag>true/false</tag>
-static bool extractBool(const std::string &text, const std::string &tag, bool &out)
-{
-    std::string content;
-    if (!extractTagContent(text, tag, content))
-        return false;
-
-    // Convert to lowercase for comparison
-    std::string lower = content;
-    std::transform(lower.begin(), lower.end(), lower.begin(),
-                   [](unsigned char c)
-                   { return std::tolower(c); });
-
-    if (lower == "true" || lower == "1")
-    {
-        out = true;
-        return true;
-    }
-    else if (lower == "false" || lower == "0")
-    {
-        out = false;
-        return true;
-    }
-    return false;
-}
-
-// Extract a float3 from an element with x, y, z or r, g, b attributes
-// e.g., <eye x="1.0" y="2.0" z="3.0"/> or <color r="0.5" g="0.5" b="0.5"/>
-static bool extractFloat3Attr(const std::string &text, const std::string &tag, float3 &out, bool rgb = false)
-{
-    // Find the tag opening
     std::string pattern = "<" + tag;
-    size_t pos = text.find(pattern);
+    size_t pos = text.find(pattern, startFrom);
     if (pos == std::string::npos)
         return false;
 
-    // Find the end of this element (either /> or >)
+    // Make sure it's the actual tag (not a prefix of another tag)
+    size_t afterTag = pos + pattern.length();
+    if (afterTag < text.length() && !std::isspace(text[afterTag]) && 
+        text[afterTag] != '>' && text[afterTag] != '/')
+        return false;
+
     size_t endPos = text.find(">", pos);
     if (endPos == std::string::npos)
         return false;
 
-    std::string element = text.substr(pos, endPos - pos + 1);
+    element = text.substr(pos, endPos - pos + 1);
+    return true;
+}
 
-    const char *attr1 = rgb ? "r" : "x";
-    const char *attr2 = rgb ? "g" : "y";
-    const char *attr3 = rgb ? "b" : "z";
-
-    auto extractAttr = [&element](const char *attr, float &val) -> bool
-    {
-        std::string attrPattern = std::string(attr) + "=\"";
-        size_t attrPos = element.find(attrPattern);
-        if (attrPos == std::string::npos)
-            return false;
-
-        attrPos += attrPattern.length();
-        size_t attrEnd = element.find('"', attrPos);
-        if (attrEnd == std::string::npos)
-            return false;
-
-        std::string valStr = element.substr(attrPos, attrEnd - attrPos);
-        std::stringstream ss(valStr);
-        ss >> val;
-        return !ss.fail();
-    };
-
-    float x, y, z;
-    if (!extractAttr(attr1, x) || !extractAttr(attr2, y) || !extractAttr(attr3, z))
+// Extract a single attribute value from an element string
+static bool extractAttr(const std::string &element, const std::string &attr, std::string &out)
+{
+    std::string pattern = attr + "=\"";
+    size_t pos = element.find(pattern);
+    if (pos == std::string::npos)
         return false;
 
+    pos += pattern.length();
+    size_t endPos = element.find('"', pos);
+    if (endPos == std::string::npos)
+        return false;
+
+    out = element.substr(pos, endPos - pos);
+    return true;
+}
+
+// Extract float attribute
+static bool extractFloatAttr(const std::string &element, const std::string &attr, float &out)
+{
+    std::string val;
+    if (!extractAttr(element, attr, val))
+        return false;
+    std::stringstream ss(val);
+    ss >> out;
+    return !ss.fail();
+}
+
+// Extract unsigned int attribute
+static bool extractUintAttr(const std::string &element, const std::string &attr, unsigned int &out)
+{
+    std::string val;
+    if (!extractAttr(element, attr, val))
+        return false;
+    std::stringstream ss(val);
+    ss >> out;
+    return !ss.fail();
+}
+
+// Extract bool attribute (true/false or 1/0)
+static bool extractBoolAttr(const std::string &element, const std::string &attr, bool &out)
+{
+    std::string val;
+    if (!extractAttr(element, attr, val))
+        return false;
+    
+    std::string lower = val;
+    std::transform(lower.begin(), lower.end(), lower.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    
+    if (lower == "true" || lower == "1") { out = true; return true; }
+    if (lower == "false" || lower == "0") { out = false; return true; }
+    return false;
+}
+
+// Extract float3 from r/g/b or x/y/z attributes
+static bool extractFloat3Attr(const std::string &element, float3 &out, bool rgb = false)
+{
+    const char *a1 = rgb ? "r" : "x";
+    const char *a2 = rgb ? "g" : "y";
+    const char *a3 = rgb ? "b" : "z";
+    
+    float x, y, z;
+    if (!extractFloatAttr(element, a1, x) || 
+        !extractFloatAttr(element, a2, y) || 
+        !extractFloatAttr(element, a3, z))
+        return false;
+    
     out = make_float3(x, y, z);
     return true;
 }
 
-// Extract string content from <tag>text</tag>
-static bool extractString(const std::string &text, const std::string &tag, std::string &out)
+// Extract float3 from a named sub-element with r/g/b or x/y/z attributes
+static bool extractFloat3Element(const std::string &text, const std::string &tag, float3 &out, bool rgb = false)
 {
-    return extractTagContent(text, tag, out);
+    std::string element;
+    if (!findElement(text, tag, element))
+        return false;
+    return extractFloat3Attr(element, out, rgb);
 }
 
-// Extract attribute value from an element
-static bool extractAttribute(const std::string &text, const std::string &tag, const std::string &attr, std::string &out)
-{
-    std::string pattern = "<" + tag;
-    size_t pos = text.find(pattern);
-    if (pos == std::string::npos)
-        return false;
-
-    size_t endPos = text.find(">", pos);
-    if (endPos == std::string::npos)
-        return false;
-
-    std::string element = text.substr(pos, endPos - pos + 1);
-
-    std::string attrPattern = attr + "=\"";
-    size_t attrPos = element.find(attrPattern);
-    if (attrPos == std::string::npos)
-        return false;
-
-    attrPos += attrPattern.length();
-    size_t attrEnd = element.find('"', attrPos);
-    if (attrEnd == std::string::npos)
-        return false;
-
-    out = element.substr(attrPos, attrEnd - attrPos);
-    return true;
-}
+//=============================================================================
+// ConfigLoader implementation
+//=============================================================================
 
 PhotonMappingConfig ConfigLoader::load(const std::string &path)
 {
@@ -181,8 +161,7 @@ PhotonMappingConfig ConfigLoader::load(const std::string &path)
     std::ifstream file(path);
     if (!file)
     {
-        std::cerr << "ConfigLoader: could not open configuration file: " << path
-                  << " - using default photon mapping parameters." << std::endl;
+        std::cerr << "ConfigLoader: could not open " << path << " - using defaults." << std::endl;
         return cfg;
     }
 
@@ -190,289 +169,245 @@ PhotonMappingConfig ConfigLoader::load(const std::string &path)
     buffer << file.rdbuf();
     const std::string text = buffer.str();
 
-    unsigned int uval = 0;
-    float fval = 0.0f;
-    bool bval = false;
+    std::string element;
 
-    // Basic photon mapping params
-    if (extractNumber<unsigned int>(text, "max_photons", uval))
-        cfg.max_photons = uval;
-    if (extractNumber<float>(text, "photon_collision_radius", fval))
-        cfg.photon_collision_radius = fval;
-
-    // Animation configuration
-    if (extractBool(text, "enabled", bval))
-        cfg.animation.enabled = bval;
-    if (extractNumber<float>(text, "photon_speed", fval))
-        cfg.animation.photonSpeed = fval;
-    if (extractNumber<float>(text, "emission_interval", fval))
-        cfg.animation.emissionInterval = fval;
-
-    // Gathering configuration
-    if (extractNumber<float>(text, "indirect_radius", fval))
-        cfg.gathering.indirect_radius = fval;
-    if (extractNumber<float>(text, "caustic_radius", fval))
-        cfg.gathering.caustic_radius = fval;
-    if (extractNumber<float>(text, "indirect_brightness", fval))
-        cfg.gathering.indirect_brightness = fval;
-    if (extractNumber<float>(text, "caustic_brightness", fval))
-        cfg.gathering.caustic_brightness = fval;
-
-    // Direct lighting configuration
-    if (extractNumber<float>(text, "ambient", fval))
-        cfg.direct_lighting.ambient = fval;
-    if (extractNumber<float>(text, "shadow_ambient", fval))
-        cfg.direct_lighting.shadow_ambient = fval;
-    if (extractNumber<float>(text, "intensity", fval))
-        cfg.direct_lighting.intensity = fval;
-    if (extractNumber<float>(text, "attenuation_factor", fval))
-        cfg.direct_lighting.attenuation_factor = fval;
-
-    // Specular configuration
-    if (extractNumber<unsigned int>(text, "max_recursion_depth", uval))
-        cfg.specular.max_recursion_depth = uval;
-    if (extractNumber<float>(text, "glass_ior", fval))
-        cfg.specular.glass_ior = fval;
-    float3 glass_tint;
-    if (extractFloat3Attr(text, "glass_tint", glass_tint, true))
-        cfg.specular.glass_tint = glass_tint;
-    if (extractNumber<float>(text, "mirror_reflectivity", fval))
-        cfg.specular.mirror_reflectivity = fval;
-    if (extractNumber<float>(text, "fresnel_min", fval))
-        cfg.specular.fresnel_min = fval;
-    if (extractNumber<float>(text, "specular_indirect_brightness", fval))
-        cfg.specular.indirect_brightness = fval;
-    if (extractNumber<float>(text, "specular_caustic_brightness", fval))
-        cfg.specular.caustic_brightness = fval;
-    if (extractNumber<float>(text, "specular_ambient", fval))
-        cfg.specular.ambient = fval;
-
-    // Weights configuration (inside <weights> block)
-    std::string weightsBlock;
-    if (extractTagContent(text, "weights", weightsBlock))
+    //-------------------------------------------------------------------------
+    // Cornell Box
+    //-------------------------------------------------------------------------
+    if (findElement(text, "cornell_box", element))
     {
-        float w;
-        if (extractNumber<float>(weightsBlock, "direct", w))
-            cfg.weights.direct = w;
-        if (extractNumber<float>(weightsBlock, "indirect", w))
-            cfg.weights.indirect = w;
-        if (extractNumber<float>(weightsBlock, "caustics", w))
-            cfg.weights.caustics = w;
-        if (extractNumber<float>(weightsBlock, "specular", w))
-            cfg.weights.specular = w;
+        // Dimensions are attributes (ignored for now, using Constants.h)
     }
 
-    // Wall colors configuration
     std::string wallsBlock;
     if (extractTagContent(text, "walls", wallsBlock))
     {
-        float3 wallColor;
-        if (extractFloat3Attr(wallsBlock, "floor", wallColor, true))
-            cfg.walls.floor = wallColor;
-        if (extractFloat3Attr(wallsBlock, "ceiling", wallColor, true))
-            cfg.walls.ceiling = wallColor;
-        if (extractFloat3Attr(wallsBlock, "back", wallColor, true))
-            cfg.walls.back = wallColor;
-        if (extractFloat3Attr(wallsBlock, "left", wallColor, true))
-            cfg.walls.left = wallColor;
-        if (extractFloat3Attr(wallsBlock, "right", wallColor, true))
-            cfg.walls.right = wallColor;
+        extractFloat3Element(wallsBlock, "floor", cfg.walls.floor, true);
+        extractFloat3Element(wallsBlock, "ceiling", cfg.walls.ceiling, true);
+        extractFloat3Element(wallsBlock, "back", cfg.walls.back, true);
+        extractFloat3Element(wallsBlock, "left", cfg.walls.left, true);
+        extractFloat3Element(wallsBlock, "right", cfg.walls.right, true);
     }
 
-    // Camera configuration
+    //-------------------------------------------------------------------------
+    // Photon Mapping Parameters
+    //-------------------------------------------------------------------------
+    if (findElement(text, "photon_mapping", element))
+    {
+        extractUintAttr(element, "max_photons", cfg.max_photons);
+        extractFloatAttr(element, "collision_radius", cfg.photon_collision_radius);
+    }
+
+    // Animation
+    if (findElement(text, "animated", element))
+    {
+        extractBoolAttr(element, "enabled", cfg.animation.enabled);
+        extractFloatAttr(element, "speed", cfg.animation.photonSpeed);
+        extractFloatAttr(element, "emission_interval", cfg.animation.emissionInterval);
+    }
+
+    // Debug / Trajectory Recording / Photon Map I/O
+    if (findElement(text, "debug", element))
+    {
+        extractBoolAttr(element, "record_trajectories", cfg.debug.record_trajectories);
+        extractAttr(element, "trajectory_file", cfg.debug.trajectory_file);
+        extractBoolAttr(element, "save_photon_map", cfg.debug.save_photon_map);
+        extractBoolAttr(element, "load_photon_map", cfg.debug.load_photon_map);
+        extractAttr(element, "photon_map_file", cfg.debug.photon_map_file);
+        extractBoolAttr(element, "export_images", cfg.debug.export_images);
+        extractAttr(element, "export_dir", cfg.debug.export_dir);
+    }
+
+    // Gathering
+    if (findElement(text, "gathering", element))
+    {
+        extractFloatAttr(element, "indirect_radius", cfg.gathering.indirect_radius);
+        extractFloatAttr(element, "caustic_radius", cfg.gathering.caustic_radius);
+        extractFloatAttr(element, "indirect_brightness", cfg.gathering.indirect_brightness);
+        extractFloatAttr(element, "caustic_brightness", cfg.gathering.caustic_brightness);
+    }
+
+    // Direct Lighting
+    if (findElement(text, "direct_lighting", element))
+    {
+        extractFloatAttr(element, "ambient", cfg.direct_lighting.ambient);
+        extractFloatAttr(element, "shadow_ambient", cfg.direct_lighting.shadow_ambient);
+        extractFloatAttr(element, "intensity", cfg.direct_lighting.intensity);
+        extractFloatAttr(element, "attenuation", cfg.direct_lighting.attenuation_factor);
+    }
+
+    // Specular
+    std::string specularBlock;
+    if (extractTagContent(text, "specular", specularBlock))
+    {
+        if (findElement(text, "specular", element))
+        {
+            extractUintAttr(element, "max_depth", cfg.specular.max_recursion_depth);
+            extractFloatAttr(element, "glass_ior", cfg.specular.glass_ior);
+            extractFloatAttr(element, "mirror_reflectivity", cfg.specular.mirror_reflectivity);
+            extractFloatAttr(element, "fresnel_min", cfg.specular.fresnel_min);
+            extractFloatAttr(element, "ambient", cfg.specular.ambient);
+            extractFloatAttr(element, "indirect_brightness", cfg.specular.indirect_brightness);
+            extractFloatAttr(element, "caustic_brightness", cfg.specular.caustic_brightness);
+        }
+        extractFloat3Element(specularBlock, "glass_tint", cfg.specular.glass_tint, true);
+    }
+
+    // Weights
+    if (findElement(text, "weights", element))
+    {
+        extractFloatAttr(element, "direct", cfg.weights.direct);
+        extractFloatAttr(element, "indirect", cfg.weights.indirect);
+        extractFloatAttr(element, "caustics", cfg.weights.caustics);
+        extractFloatAttr(element, "specular", cfg.weights.specular);
+    }
+
+    //-------------------------------------------------------------------------
+    // Camera
+    //-------------------------------------------------------------------------
     std::string cameraBlock;
     if (extractTagContent(text, "camera", cameraBlock))
     {
-        float3 eye, lookAt, up;
-        float fovVal = 0.0f;
-        bool haveEye = extractFloat3Attr(cameraBlock, "eye", eye, false);
-        bool haveLookAt = extractFloat3Attr(cameraBlock, "lookAt", lookAt, false);
-        bool haveUp = extractFloat3Attr(cameraBlock, "up", up, false);
-        bool haveFov = extractNumber<float>(cameraBlock, "fov", fovVal);
-
-        if (haveEye && haveLookAt && haveUp)
+        if (findElement(text, "camera", element))
+            extractFloatAttr(element, "fov", cfg.camera.fov);
+        
+        if (extractFloat3Element(cameraBlock, "eye", cfg.camera.eye, false) &&
+            extractFloat3Element(cameraBlock, "lookAt", cfg.camera.lookAt, false) &&
+            extractFloat3Element(cameraBlock, "up", cfg.camera.up, false))
         {
             cfg.camera.hasCamera = true;
-            cfg.camera.eye = eye;
-            cfg.camera.lookAt = lookAt;
-            cfg.camera.up = up;
-            if (haveFov)
-                cfg.camera.fov = fovVal;
         }
     }
 
-    // Parse all objects from <objects> block
+    //-------------------------------------------------------------------------
+    // Scene Objects
+    //-------------------------------------------------------------------------
     std::string objectsBlock;
     if (extractTagContent(text, "objects", objectsBlock))
     {
+        // Parse spheres: <sphere x="..." y="..." z="..." radius="...">
         size_t searchPos = 0;
         while (true)
         {
-            // Find next <object tag
-            size_t objStart = objectsBlock.find("<object", searchPos);
-            if (objStart == std::string::npos)
+            std::string sphereElement;
+            size_t spherePos = objectsBlock.find("<sphere", searchPos);
+            if (spherePos == std::string::npos)
                 break;
 
-            // Find the end of the opening tag
-            size_t tagEnd = objectsBlock.find(">", objStart);
-            if (tagEnd == std::string::npos)
+            size_t sphereEnd = objectsBlock.find("</sphere>", spherePos);
+            if (sphereEnd == std::string::npos)
                 break;
 
-            size_t objEnd;
-            // Check if it's self-closing (ends with />)
-            if (tagEnd > 0 && objectsBlock[tagEnd - 1] == '/')
+            std::string sphereBlock = objectsBlock.substr(spherePos, sphereEnd - spherePos + 9);
+            
+            if (findElement(sphereBlock, "sphere", sphereElement))
             {
-                objEnd = tagEnd + 1;
+                SphereObjectConfig sphere;
+                
+                float x, y, z;
+                if (extractFloatAttr(sphereElement, "x", x) &&
+                    extractFloatAttr(sphereElement, "y", y) &&
+                    extractFloatAttr(sphereElement, "z", z))
+                {
+                    sphere.center = make_float3(x, y, z);
+                }
+                extractFloatAttr(sphereElement, "radius", sphere.radius);
+                
+                // Material
+                std::string matElement;
+                if (findElement(sphereBlock, "material", matElement))
+                {
+                    extractAttr(matElement, "type", sphere.materialType);
+                    extractFloatAttr(matElement, "ior", sphere.ior);
+                    
+                    float r, g, b;
+                    if (extractFloatAttr(matElement, "r", r) &&
+                        extractFloatAttr(matElement, "g", g) &&
+                        extractFloatAttr(matElement, "b", b))
+                    {
+                        sphere.color = make_float3(r, g, b);
+                    }
+                }
+                
+                cfg.spheres.push_back(sphere);
             }
-            else
-            {
-                // Look for matching </object>
-                size_t objEndTag = objectsBlock.find("</object>", tagEnd);
-                if (objEndTag == std::string::npos)
-                    break;
-                objEnd = objEndTag + 9;
-            }
+            
+            searchPos = sphereEnd + 9;
+        }
 
-            std::string objBlock = objectsBlock.substr(objStart, objEnd - objStart);
-            std::string typeAttr;
-            extractAttribute(objBlock, "object", "type", typeAttr);
+        // Parse meshes: <mesh path="..." x="..." y="..." z="..." scale="...">
+        searchPos = 0;
+        while (true)
+        {
+            size_t meshPos = objectsBlock.find("<mesh", searchPos);
+            if (meshPos == std::string::npos)
+                break;
 
-            // Parse MESH objects
-            if (typeAttr == "mesh")
+            size_t meshEnd = objectsBlock.find("</mesh>", meshPos);
+            if (meshEnd == std::string::npos)
+                break;
+
+            std::string meshBlock = objectsBlock.substr(meshPos, meshEnd - meshPos + 7);
+            std::string meshElement;
+            
+            if (findElement(meshBlock, "mesh", meshElement))
             {
                 MeshObjectConfig mesh;
-                extractString(objBlock, "path", mesh.path);
-
-                float3 pos;
-                if (extractFloat3Attr(objBlock, "position", pos, false))
-                    mesh.position = pos;
-
-                float scaleVal;
-                if (extractNumber<float>(objBlock, "scale", scaleVal))
-                    mesh.scale = scaleVal;
-
-                std::string materialBlock;
-                if (extractTagContent(objBlock, "material", materialBlock))
+                
+                extractAttr(meshElement, "path", mesh.path);
+                
+                float x, y, z;
+                if (extractFloatAttr(meshElement, "x", x) &&
+                    extractFloatAttr(meshElement, "y", y) &&
+                    extractFloatAttr(meshElement, "z", z))
                 {
-                    std::string matType;
-                    if (extractAttribute(objBlock, "material", "type", matType))
-                        mesh.materialType = matType;
-
-                    float3 col;
-                    if (extractFloat3Attr(materialBlock, "color", col, true))
-                        mesh.color = col;
-
-                    float iorVal;
-                    if (extractNumber<float>(materialBlock, "ior", iorVal))
-                        mesh.ior = iorVal;
+                    mesh.position = make_float3(x, y, z);
                 }
-
+                extractFloatAttr(meshElement, "scale", mesh.scale);
+                
+                // Material
+                std::string matElement;
+                if (findElement(meshBlock, "material", matElement))
+                {
+                    extractAttr(matElement, "type", mesh.materialType);
+                    extractFloatAttr(matElement, "ior", mesh.ior);
+                    
+                    float r, g, b;
+                    if (extractFloatAttr(matElement, "r", r) &&
+                        extractFloatAttr(matElement, "g", g) &&
+                        extractFloatAttr(matElement, "b", b))
+                    {
+                        mesh.color = make_float3(r, g, b);
+                    }
+                }
+                
                 if (!mesh.path.empty())
                     cfg.meshes.push_back(mesh);
             }
-            // Parse SPHERE objects
-            else if (typeAttr == "sphere")
-            {
-                SphereObjectConfig sphere;
-
-                float3 center;
-                if (extractFloat3Attr(objBlock, "center", center, false))
-                    sphere.center = center;
-
-                float radiusVal;
-                if (extractNumber<float>(objBlock, "radius", radiusVal))
-                    sphere.radius = radiusVal;
-
-                std::string materialBlock;
-                if (extractTagContent(objBlock, "material", materialBlock))
-                {
-                    std::string matType;
-                    if (extractAttribute(objBlock, "material", "type", matType))
-                        sphere.materialType = matType;
-
-                    float3 col;
-                    if (extractFloat3Attr(materialBlock, "color", col, true))
-                        sphere.color = col;
-
-                    float iorVal;
-                    if (extractNumber<float>(materialBlock, "ior", iorVal))
-                        sphere.ior = iorVal;
-                }
-
-                cfg.spheres.push_back(sphere);
-            }
-            // Parse QUAD objects (mirrors, etc.)
-            else if (typeAttr == "quad")
-            {
-                QuadObjectConfig quad;
-
-                float3 corner;
-                if (extractFloat3Attr(objBlock, "corner", corner, false))
-                    quad.corner = corner;
-
-                float3 edge1;
-                if (extractFloat3Attr(objBlock, "edge1", edge1, false))
-                    quad.edge1 = edge1;
-
-                float3 edge2;
-                if (extractFloat3Attr(objBlock, "edge2", edge2, false))
-                    quad.edge2 = edge2;
-
-                std::string materialBlock;
-                if (extractTagContent(objBlock, "material", materialBlock))
-                {
-                    std::string matType;
-                    if (extractAttribute(objBlock, "material", "type", matType))
-                        quad.materialType = matType;
-
-                    float3 col;
-                    if (extractFloat3Attr(materialBlock, "color", col, true))
-                        quad.color = col;
-                }
-
-                cfg.quads.push_back(quad);
-            }
-
-            searchPos = objEnd;
+            
+            searchPos = meshEnd + 7;
         }
     }
 
-    std::cout << "ConfigLoader: loaded photon mapping config from " << path << std::endl;
+    //-------------------------------------------------------------------------
+    // Print loaded configuration
+    //-------------------------------------------------------------------------
+    std::cout << "ConfigLoader: loaded from " << path << std::endl;
     std::cout << "  max_photons=" << cfg.max_photons << std::endl;
-    std::cout << "  animated=" << (cfg.animation.enabled ? "true" : "false") << std::endl;
-    std::cout << "  gathering: indirect_radius=" << cfg.gathering.indirect_radius
-              << ", caustic_radius=" << cfg.gathering.caustic_radius << std::endl;
-    std::cout << "  gathering: indirect_brightness=" << cfg.gathering.indirect_brightness
-              << ", caustic_brightness=" << cfg.gathering.caustic_brightness << std::endl;
+    std::cout << "  animated=" << (cfg.animation.enabled ? "true" : "false")
+              << " speed=" << cfg.animation.photonSpeed << std::endl;
+    std::cout << "  gathering: indirect_r=" << cfg.gathering.indirect_radius
+              << " caustic_r=" << cfg.gathering.caustic_radius << std::endl;
     std::cout << "  direct: ambient=" << cfg.direct_lighting.ambient
-              << ", intensity=" << cfg.direct_lighting.intensity << std::endl;
-    std::cout << "  specular: glass_ior=" << cfg.specular.glass_ior
-              << ", mirror_reflectivity=" << cfg.specular.mirror_reflectivity << std::endl;
-    std::cout << "  weights: direct=" << cfg.weights.direct
-              << ", indirect=" << cfg.weights.indirect
-              << ", caustics=" << cfg.weights.caustics
-              << ", specular=" << cfg.weights.specular << std::endl;
-    std::cout << "  walls: left=(" << cfg.walls.left.x << "," << cfg.walls.left.y << "," << cfg.walls.left.z << ")"
-              << ", right=(" << cfg.walls.right.x << "," << cfg.walls.right.y << "," << cfg.walls.right.z << ")"
-              << std::endl;
-    std::cout << "  spheres: " << cfg.spheres.size() << " sphere(s)" << std::endl;
-    for (const auto &s : cfg.spheres)
-    {
-        std::cout << "    - " << s.materialType << " at (" << s.center.x << "," << s.center.y << "," << s.center.z
-                  << ") r=" << s.radius << std::endl;
-    }
-    std::cout << "  quads: " << cfg.quads.size() << " quad(s)" << std::endl;
-    for (const auto &q : cfg.quads)
-    {
-        std::cout << "    - " << q.materialType << " at (" << q.corner.x << "," << q.corner.y << "," << q.corner.z
-                  << ")" << std::endl;
-    }
-    std::cout << "  meshes: " << cfg.meshes.size() << " mesh(es)" << std::endl;
-    for (const auto &m : cfg.meshes)
-    {
-        std::cout << "    - " << m.path << " at (" << m.position.x << "," << m.position.y << "," << m.position.z
-                  << ") scale=" << m.scale << std::endl;
-    }
+              << " intensity=" << cfg.direct_lighting.intensity << std::endl;
+    std::cout << "  specular: ior=" << cfg.specular.glass_ior
+              << " mirror=" << cfg.specular.mirror_reflectivity << std::endl;
+    std::cout << "  weights: d=" << cfg.weights.direct
+              << " i=" << cfg.weights.indirect
+              << " c=" << cfg.weights.caustics
+              << " s=" << cfg.weights.specular << std::endl;
+    std::cout << "  spheres: " << cfg.spheres.size() << std::endl;
+    std::cout << "  meshes: " << cfg.meshes.size() << std::endl;
 
     return cfg;
 }

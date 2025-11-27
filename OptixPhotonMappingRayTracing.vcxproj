@@ -87,8 +87,10 @@
       <SubSystem>Console</SubSystem>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /Y /D "$(OPTIX_SAMPLES_BUILD)\bin\Debug\*.dll" "$(OutDir)"</Command>
-      <Message>Copying DLL dependencies to output directory</Message>
+      <Command>xcopy /Y /D "$(OPTIX_SAMPLES_BUILD)\bin\Debug\*.dll" "$(OutDir)"
+xcopy /Y /D /E /I "$(SolutionDir)ptx" "$(OutDir)ptx"
+xcopy /Y /D /E /I "$(SolutionDir)assets" "$(OutDir)assets"</Command>
+      <Message>Copying dependencies, shaders, and assets to output directory</Message>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   
@@ -117,8 +119,10 @@
       <SubSystem>Console</SubSystem>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /Y /D "$(OPTIX_SAMPLES_BUILD)\bin\Release\*.dll" "$(OutDir)"</Command>
-      <Message>Copying DLL dependencies to output directory</Message>
+      <Command>xcopy /Y /D "$(OPTIX_SAMPLES_BUILD)\bin\Release\*.dll" "$(OutDir)"
+xcopy /Y /D /E /I "$(SolutionDir)ptx" "$(OutDir)ptx"
+xcopy /Y /D /E /I "$(SolutionDir)assets" "$(OutDir)assets"</Command>
+      <Message>Copying dependencies, shaders, and assets to output directory</Message>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   
@@ -131,11 +135,11 @@
     <ClCompile Include="src\core\main.cpp" />
     <ClCompile Include="src\core\Application.cpp" />
     <ClCompile Include="src\core\ConfigLoader.cpp" />
+    <ClCompile Include="src\core\ExporterManager.cpp" />
     <ClCompile Include="src\scene\Camera.cpp" />
     <ClCompile Include="src\scene\Scene.cpp" />
     <ClCompile Include="src\scene\ObjLoader.cpp" />
     <ClCompile Include="src\lighting\QuadLight.cpp" />
-    <ClCompile Include="src\rendering\photon\PhotonMapper.cpp" />
     <ClCompile Include="src\rendering\raster\RasterRenderer.cpp" />
     <ClCompile Include="src\rendering\direct\DirectLightRenderer.cpp" />
     <ClCompile Include="src\rendering\indirect\IndirectLightRenderer.cpp" />
@@ -156,6 +160,8 @@
     <ClInclude Include="src\random.h" />
     <ClInclude Include="src\core\Application.h" />
     <ClInclude Include="src\core\ConfigLoader.h" />
+    <ClInclude Include="src\core\ExporterManager.h" />
+    <ClInclude Include="src\utils\stb_image_write.h" />
     <ClInclude Include="src\scene\Camera.h" />
     <ClInclude Include="src\scene\Scene.h" />
     <ClInclude Include="src\scene\Object.h" />
@@ -167,8 +173,10 @@
     <ClInclude Include="src\lighting\Light.h" />
     <ClInclude Include="src\lighting\QuadLight.h" />
     <ClInclude Include="src\rendering\photon\Photon.h" />
-    <ClInclude Include="src\rendering\photon\PhotonMapper.h" />
     <ClInclude Include="src\rendering\photon\PhotonMapRenderer.h" />
+    <ClInclude Include="src\rendering\photon\PhotonTrajectory.h" />
+    <ClInclude Include="src\rendering\photon\TrajectoryExporter.h" />
+    <ClInclude Include="src\rendering\photon\PhotonMapIO.h" />
     <ClInclude Include="src\rendering\raster\RasterRenderer.h" />
     <ClInclude Include="src\ui\InputCommandManager.h" />
     <ClInclude Include="src\ui\OpenGLManager.h" />

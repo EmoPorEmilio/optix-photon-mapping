@@ -55,28 +55,6 @@ __device__ float3 traceSecondaryRay(const float3& origin, const float3& directio
     return make_float3(__uint_as_float(p0), __uint_as_float(p1), __uint_as_float(p2));
 }
 
-// Compute geometric triangle normal from vertex positions
-__device__ float3 getTriangleNormal(const float3& ray_dir)
-{
-    float3 vertices[3];
-    optixGetTriangleVertexData(
-        optixGetGASTraversableHandle(),
-        optixGetPrimitiveIndex(),
-        optixGetSbtGASIndex(),
-        0.0f,
-        vertices
-    );
-
-    float3 edge1 = vertices[1] - vertices[0];
-    float3 edge2 = vertices[2] - vertices[0];
-    float3 normal = normalize(cross(edge1, edge2));
-
-    if (dot(normal, ray_dir) > 0.0f)
-        normal = -normal;
-
-    return normal;
-}
-
 // Compute direct lighting at a point
 __device__ float3 computeDirectLight(const float3& hit_point, const float3& normal, const float3& albedo)
 {
@@ -114,8 +92,8 @@ extern "C" __global__ void __closesthit__specular_triangle()
     const float t_hit = optixGetRayTmax();
     const float3 hit_point = ray_origin + t_hit * ray_dir;
     
-    // Get normal and material
-    float3 normal = getTriangleNormal(ray_dir);
+    // Get normal and material (using shared helper from photon_gather.h)
+    float3 normal = computeTriangleNormal(ray_dir);
     float3 albedo = make_float3(0.8f, 0.8f, 0.8f);
     int materialType = MATERIAL_DIFFUSE;
     
@@ -185,7 +163,7 @@ extern "C" __global__ void __closesthit__specular_triangle()
         params.caustic_photon_map,
         params.caustic_photon_count,
         params.caustic_kdtree,
-        params.gather_radius * 0.5f);
+        params.gather_radius * PM_CAUSTIC_RADIUS_MULT);
     color += caustics * params.caustic_brightness;
     
     // Configurable ambient for base visibility

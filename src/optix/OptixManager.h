@@ -22,8 +22,10 @@
 #include "../lighting/QuadLight.h"
 #include "../rendering/photon/Photon.h"
 #include "../rendering/photon/PhotonKDTreeDevice.h"
+#include "../rendering/photon/PhotonTrajectory.h"
 
 #include <iostream>
+#include <vector>
 #include <fstream>
 #include <stdexcept>
 
@@ -76,6 +78,10 @@ private:
     // Caustic photon map buffers
     CUdeviceptr d_caustic_photon_buffer = 0;
     CUdeviceptr d_caustic_photon_counter = 0;
+
+    // Trajectory recording buffer
+    CUdeviceptr d_trajectory_buffer = 0;
+    unsigned int trajectory_buffer_size = 0;
 
     // Direct lighting pipeline
     OptixModule direct_module = 0;
@@ -148,10 +154,19 @@ public:
     void setQuadLightStartIndex(unsigned int index) { quadLightStartIndex = index; }
 
     bool createPhotonPipeline();
+    
+    // Standard photon pass (no trajectory recording)
     void launchPhotonPass(unsigned int num_photons, const QuadLight &light,
                           unsigned int quadLightStartIndex,
                           CUdeviceptr &out_photons, unsigned int &out_count,
                           CUdeviceptr &out_caustic_photons, unsigned int &out_caustic_count);
+
+    // Photon pass with trajectory recording
+    void launchPhotonPassWithTrajectories(unsigned int num_photons, const QuadLight &light,
+                                          unsigned int quadLightStartIndex,
+                                          CUdeviceptr &out_photons, unsigned int &out_count,
+                                          CUdeviceptr &out_caustic_photons, unsigned int &out_caustic_count,
+                                          std::vector<PhotonTrajectory> &out_trajectories);
 
     // Direct lighting pipeline
     bool createDirectLightingPipeline();

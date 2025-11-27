@@ -5,7 +5,9 @@
 // Custom intersection program for analytic spheres in the photon pass.
 // Uses PhotonLaunchParams::sphere1/sphere2 to define geometry.
 
+#ifndef PHOTON_PARAMS_DEFINED
 extern "C" __constant__ PhotonLaunchParams params;
+#endif
 
 extern "C" __global__ void __intersection__photon_sphere()
 {

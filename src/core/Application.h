@@ -12,10 +12,12 @@
 #include "Constants.h"
 #include "CollisionDetector.h"
 #include "../scene/ObjLoader.h"
-#include "../rendering/photon/PhotonMapper.h"
 #include "../rendering/photon/PhotonMapRenderer.h"
 #include "../rendering/photon/AnimatedPhoton.h"
 #include "../rendering/photon/Photon.h"
+#include "../rendering/photon/TrajectoryExporter.h"
+#include "../rendering/photon/PhotonMapIO.h"
+#include "ExporterManager.h"
 #include "../rendering/direct/DirectLightRenderer.h"
 #include "../rendering/indirect/IndirectLightRenderer.h"
 #include "../rendering/caustic/CausticLightRenderer.h"
@@ -43,7 +45,7 @@ private:
     Camera camera;
     Scene scene;
     OptixManager optixManager;
-    std::unique_ptr<PhotonMapper> photonMapper;
+    std::unique_ptr<ExporterManager> exporterManager;
     std::unique_ptr<CollisionDetector> collisionDetector;
     bool isRunning = false;
     bool photonsEmitted = false;
@@ -52,6 +54,19 @@ private:
     bool animatedMode = true;      // If false, instant photon tracing
     float photonSpeed = 200.0f;    // units per second (animated mode)
     float emissionInterval = 0.5f; // seconds between emissions (animated mode)
+
+    // Debug/trajectory recording settings
+    bool recordTrajectories = false;
+    std::string trajectoryOutputFile = "photon_trajectories.txt";
+    
+    // Photon map I/O settings
+    bool savePhotonMap = false;
+    bool loadPhotonMap = false;
+    std::string photonMapFile = "photon_map.txt";
+    
+    // Image export settings
+    bool exportImages = false;
+    std::string exportDir = "export";
 
     // CPU Photon Animation
     std::vector<AnimatedPhoton> animatedPhotons;

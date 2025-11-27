@@ -46,11 +46,7 @@ extern "C" __global__ void __raygen__caustic()
         __uint_as_float(p2)
     );
 
-    // Gamma correction
-    color.x = powf(fmaxf(0.0f, fminf(1.0f, color.x)), 1.0f / 2.2f);
-    color.y = powf(fmaxf(0.0f, fminf(1.0f, color.y)), 1.0f / 2.2f);
-    color.z = powf(fmaxf(0.0f, fminf(1.0f, color.z)), 1.0f / 2.2f);
-
+    // Output linear color - gamma correction applied in final combine stage
     params.frame_buffer[idx.y * params.width + idx.x] = make_float4(color, 1.0f);
 }
 

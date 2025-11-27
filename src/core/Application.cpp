@@ -1,7 +1,6 @@
 #include "Application.h"
 #include "../lighting/QuadLight.h"
 #include "../rendering/photon/PhotonMapRenderer.h"
-#include "../rendering/photon/PhotonMapper.h"
 #include "../rendering/raster/RasterRenderer.h"
 #include "../scene/Material.h"
 #include "../scene/ObjLoader.h"
@@ -12,6 +11,28 @@
 #include <cuda_runtime.h>
 #include <optix_types.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+// Get the directory where the executable is located
+static std::string getExecutableDir()
+{
+#ifdef _WIN32
+  char path[MAX_PATH];
+  GetModuleFileNameA(NULL, path, MAX_PATH);
+  std::string fullPath(path);
+  size_t lastSlash = fullPath.find_last_of("\\/");
+  if (lastSlash != std::string::npos)
+  {
+    return fullPath.substr(0, lastSlash + 1);
+  }
+#endif
+  return "";
+}
+
+static std::string exeDir;
+
 static unsigned int NUM_PHOTONS = 100000;
 
 #ifndef M_PI
@@ -21,9 +42,14 @@ static unsigned int NUM_PHOTONS = 100000;
 Application::Application()
     : rng(std::random_device{}()), uniformDist(0.0f, 1.0f) {}
 
-bool Application::initialize() {
-  // Load photon mapping configuration from XML in the Debug folder.
-  PhotonMappingConfig pmc = ConfigLoader::load("bin/Debug/configuration.xml");
+bool Application::initialize()
+{
+  // Get the executable's directory for loading files
+  exeDir = getExecutableDir();
+  std::cout << "Executable directory: " << exeDir << std::endl;
+
+  // Load photon mapping configuration from XML
+  PhotonMappingConfig pmc = ConfigLoader::load(exeDir + "configuration.xml");
   NUM_PHOTONS = pmc.max_photons;
   maxPhotons = pmc.max_photons;
   photonCollisionRadius = pmc.photon_collision_radius;
@@ -33,69 +59,93 @@ bool Application::initialize() {
   photonSpeed = pmc.animation.photonSpeed;
   emissionInterval = pmc.animation.emissionInterval;
 
+  // Load debug/trajectory settings
+  recordTrajectories = pmc.debug.record_trajectories;
+  trajectoryOutputFile = pmc.debug.trajectory_file;
+  
+  // Load photon map I/O settings
+  savePhotonMap = pmc.debug.save_photon_map;
+  loadPhotonMap = pmc.debug.load_photon_map;
+  photonMapFile = pmc.debug.photon_map_file;
+  
+  // Load export settings
+  exportImages = pmc.debug.export_images;
+  exportDir = pmc.debug.export_dir;
+
   // Initialize photon emission timer
   lastPhotonEmissionTime = std::chrono::steady_clock::now();
 
   inputCommandManager = std::make_unique<InputCommandManager>();
-  photonMapper = std::make_unique<PhotonMapper>(NUM_PHOTONS);
 
-  if (!glManager.initialize()) {
+  if (!glManager.initialize())
+  {
     std::cerr << "Failed to initialize graphics" << std::endl;
     return false;
   }
 
   photonMapRenderer = std::make_unique<PhotonMapRenderer>();
-  if (!photonMapRenderer->initialize(glManager.getWindow())) {
+  if (!photonMapRenderer->initialize(glManager.getWindow()))
+  {
     std::cerr << "Failed to initialize photon map renderer" << std::endl;
     return false;
   }
 
   directLightRenderer = std::make_unique<DirectLightRenderer>();
-  if (!directLightRenderer->initialize(glManager.getWindow()->get())) {
+  if (!directLightRenderer->initialize(glManager.getWindow()->get()))
+  {
     std::cerr << "Failed to initialize direct light renderer" << std::endl;
     return false;
   }
 
   indirectLightRenderer = std::make_unique<IndirectLightRenderer>(
       glManager.getWindow()->get(), glManager.getRightViewport());
-  if (!indirectLightRenderer->initialize(&optixManager)) {
+  if (!indirectLightRenderer->initialize(&optixManager))
+  {
     std::cerr << "Failed to initialize indirect light renderer" << std::endl;
     return false;
   }
 
   causticLightRenderer = std::make_unique<CausticLightRenderer>(
       glManager.getWindow()->get(), glManager.getRightViewport());
-  if (!causticLightRenderer->initialize(&optixManager)) {
+  if (!causticLightRenderer->initialize(&optixManager))
+  {
     std::cerr << "Failed to initialize caustic light renderer" << std::endl;
     return false;
   }
 
   specularLightRenderer = std::make_unique<SpecularLightRenderer>(
       glManager.getWindow()->get(), glManager.getRightViewport());
-  if (!specularLightRenderer->initialize(&optixManager)) {
+  if (!specularLightRenderer->initialize(&optixManager))
+  {
     std::cerr << "Failed to initialize specular light renderer" << std::endl;
     return false;
   }
 
   combinedRenderer = std::make_unique<CombinedRenderer>(
       glManager.getWindow()->get(), glManager.getRightViewport());
-  if (!combinedRenderer->initialize(&optixManager)) {
+  if (!combinedRenderer->initialize(&optixManager))
+  {
     std::cerr << "Failed to initialize combined renderer" << std::endl;
     return false;
   }
 
+  // Initialize ExporterManager for image/data exports
+  exporterManager = std::make_unique<ExporterManager>();
+  exporterManager->initialize(&optixManager, &camera, &scene);
+
   inputCommandManager->initialize(glManager.getWindow()->get());
   inputCommandManager->bindKey(
-      GLFW_KEY_ESCAPE, [this]() { glManager.getWindow()->requestClose(); });
+      GLFW_KEY_ESCAPE, [this]()
+      { glManager.getWindow()->requestClose(); });
 
   // E key exports combined image
-  inputCommandManager->bindKey(GLFW_KEY_E, [this]() {
-    combinedRenderer->exportToImage("combined_render");
-  });
+  inputCommandManager->bindKey(GLFW_KEY_E, [this]()
+                               { combinedRenderer->exportToImage("combined_render"); });
 
   // M key cycles through right viewport modes: Global -> Caustic dots -> Direct
   // -> Indirect -> Caustic light -> Global
-  inputCommandManager->bindKey(GLFW_KEY_M, [this]() {
+  inputCommandManager->bindKey(GLFW_KEY_M, [this]()
+                               {
     if (rightViewportMode == MODE_GLOBAL_PHOTONS) {
       rightViewportMode = MODE_CAUSTIC_PHOTONS;
       std::cout << "Switched to CAUSTIC photon map display ("
@@ -140,22 +190,21 @@ bool Application::initialize() {
       if (!photonMap.empty()) {
         photonMapRenderer->uploadFromHost(photonMap.data(), photonMap.size());
       }
-    }
-  });
+    } });
 
-  inputCommandManager->setMouseDragLeftHandler([this](int deltaX, int deltaY) {
-    camera.orbit(static_cast<float>(deltaX), static_cast<float>(deltaY));
-  });
+  inputCommandManager->setMouseDragLeftHandler([this](int deltaX, int deltaY)
+                                               { camera.orbit(static_cast<float>(deltaX), static_cast<float>(deltaY)); });
 
-  inputCommandManager->setMouseDragRightHandler([this](int deltaX, int deltaY) {
-    camera.pan(static_cast<float>(deltaX), static_cast<float>(deltaY));
-  });
+  inputCommandManager->setMouseDragRightHandler([this](int deltaX, int deltaY)
+                                                { camera.pan(static_cast<float>(deltaX), static_cast<float>(deltaY)); });
 
   inputCommandManager->setMouseWheelHandler(
-      [this](double yoffset) { camera.dolly(static_cast<float>(yoffset)); });
+      [this](double yoffset)
+      { camera.dolly(static_cast<float>(yoffset)); });
 
   inputCommandManager->setMouseDragMiddleHandler(
-      [this](int deltaX, int deltaY) {
+      [this](int deltaX, int deltaY)
+      {
         camera.pan(static_cast<float>(deltaX), static_cast<float>(deltaY));
       });
 
@@ -165,12 +214,15 @@ bool Application::initialize() {
   float3 cornellCenter = make_float3(278.0f, 273.0f, 279.0f);
   float3 cameraPos = make_float3(278.0f, 273.0f, -800.0f);
 
-  if (pmc.camera.hasCamera) {
+  if (pmc.camera.hasCamera)
+  {
     cameraPos = pmc.camera.eye;
     cornellCenter = pmc.camera.lookAt;
     camera = Camera(cameraPos, cornellCenter, pmc.camera.up, pmc.camera.fov,
                     aspectRatio);
-  } else {
+  }
+  else
+  {
     camera = Camera(cameraPos, cornellCenter, make_float3(0, 1, 0), 45.0f,
                     aspectRatio);
   }
@@ -229,7 +281,8 @@ bool Application::initialize() {
       make_float3(cornellWidth, 0.0f, cornellDepth), backColor));
 
   // Add quad objects from configuration (mirrors, etc.)
-  for (const auto &quadConfig : pmc.quads) {
+  for (const auto &quadConfig : pmc.quads)
+  {
     int matType = MATERIAL_DIFFUSE;
     if (quadConfig.materialType == "specular")
       matType = MATERIAL_SPECULAR;
@@ -281,10 +334,12 @@ bool Application::initialize() {
                                              lightIntensity));
 
   // Load mesh objects from configuration
-  for (const auto &meshConfig : pmc.meshes) {
+  for (const auto &meshConfig : pmc.meshes)
+  {
     auto triangles = ObjLoader::load(meshConfig.path, meshConfig.position,
                                      meshConfig.scale, meshConfig.color);
-    for (auto &tri : triangles) {
+    for (auto &tri : triangles)
+    {
       scene.addObject(std::move(tri));
     }
   }
@@ -295,37 +350,44 @@ bool Application::initialize() {
   collisionDetector->setWallColors(floorColor, ceilingColor, backColor,
                                    leftColor, rightColor);
 
-  if (!optixManager.initialize()) {
+  if (!optixManager.initialize())
+  {
     std::cerr << "Failed to initialize OptiX" << std::endl;
     return false;
   }
 
-  if (!optixManager.createPipeline()) {
+  if (!optixManager.createPipeline())
+  {
     std::cerr << "Failed to create OptiX pipeline" << std::endl;
     return false;
   }
 
-  if (!optixManager.createPhotonPipeline()) {
+  if (!optixManager.createPhotonPipeline())
+  {
     std::cerr << "Failed to create photon pipeline" << std::endl;
     return false;
   }
 
-  if (!optixManager.createDirectLightingPipeline()) {
+  if (!optixManager.createDirectLightingPipeline())
+  {
     std::cerr << "Failed to create direct lighting pipeline" << std::endl;
     return false;
   }
 
-  if (!optixManager.createIndirectLightingPipeline()) {
+  if (!optixManager.createIndirectLightingPipeline())
+  {
     std::cerr << "Failed to create indirect lighting pipeline" << std::endl;
     return false;
   }
 
-  if (!optixManager.createCausticLightingPipeline()) {
+  if (!optixManager.createCausticLightingPipeline())
+  {
     std::cerr << "Failed to create caustic lighting pipeline" << std::endl;
     return false;
   }
 
-  if (!optixManager.createSpecularLightingPipeline()) {
+  if (!optixManager.createSpecularLightingPipeline())
+  {
     std::cerr << "Failed to create specular lighting pipeline" << std::endl;
     return false;
   }
@@ -340,7 +402,8 @@ bool Application::initialize() {
   std::cout << "quadLightStartIndex = " << scene.getQuadLightStartIndex()
             << " (total triangles before light)" << std::endl;
 
-  if (!optixManager.buildTriangleGAS(vertices, colors, materialTypes)) {
+  if (!optixManager.buildTriangleGAS(vertices, colors, materialTypes))
+  {
     std::cerr << "Failed to build triangle GAS" << std::endl;
     return false;
   }
@@ -353,13 +416,15 @@ bool Application::initialize() {
   float sphere2Radius = 0.1f;
 
   // Override with spheres from config
-  if (pmc.spheres.size() >= 1) {
+  if (pmc.spheres.size() >= 1)
+  {
     sphere1Center = pmc.spheres[0].center;
     sphere1Radius = pmc.spheres[0].radius;
     scene.addObject(std::make_unique<Sphere>(sphere1Center, sphere1Radius,
                                              pmc.spheres[0].color));
   }
-  if (pmc.spheres.size() >= 2) {
+  if (pmc.spheres.size() >= 2)
+  {
     sphere2Center = pmc.spheres[1].center;
     sphere2Radius = pmc.spheres[1].radius;
     scene.addObject(std::make_unique<Sphere>(sphere2Center, sphere2Radius,
@@ -369,8 +434,10 @@ bool Application::initialize() {
   // Store sphere material types for OptiX (used in launch params)
   // Material type: 0=transmissive, 1=specular based on config
   sphereMaterials.clear();
-  for (size_t i = 0; i < 2; i++) {
-    if (i < pmc.spheres.size()) {
+  for (size_t i = 0; i < 2; i++)
+  {
+    if (i < pmc.spheres.size())
+    {
       if (pmc.spheres[i].materialType == "transmissive")
         sphereMaterials.push_back(
             {MATERIAL_TRANSMISSIVE, pmc.spheres[i].color, pmc.spheres[i].ior});
@@ -380,19 +447,23 @@ bool Application::initialize() {
       else
         sphereMaterials.push_back(
             {MATERIAL_DIFFUSE, pmc.spheres[i].color, 1.0f});
-    } else {
+    }
+    else
+    {
       // Dummy sphere - make it diffuse
       sphereMaterials.push_back({MATERIAL_DIFFUSE, make_float3(0.0f), 1.0f});
     }
   }
 
   if (!optixManager.buildSphereGAS(sphere1Center, sphere1Radius, sphere2Center,
-                                   sphere2Radius)) {
+                                   sphere2Radius))
+  {
     std::cerr << "Failed to build sphere GAS" << std::endl;
     return false;
   }
 
-  if (!optixManager.buildIAS()) {
+  if (!optixManager.buildIAS())
+  {
     std::cerr << "Failed to build IAS" << std::endl;
     return false;
   }
@@ -469,6 +540,14 @@ bool Application::initialize() {
   combinedRenderer->setDirectLightingParams(
       pmc.direct_lighting.ambient, pmc.direct_lighting.shadow_ambient,
       pmc.direct_lighting.intensity, pmc.direct_lighting.attenuation_factor);
+
+  // Configure ExporterManager with same parameters
+  exporterManager->setGatherRadius(pmc.gathering.indirect_radius);
+  exporterManager->setBrightnessMultipliers(pmc.gathering.indirect_brightness,
+                                            pmc.gathering.caustic_brightness);
+  exporterManager->setDirectLightingParams(
+      pmc.direct_lighting.ambient, pmc.direct_lighting.shadow_ambient,
+      pmc.direct_lighting.intensity, pmc.direct_lighting.attenuation_factor);
   {
     OptixManager::SpecularParams sp;
     sp.gather_radius = pmc.gathering.indirect_radius;
@@ -498,11 +577,13 @@ bool Application::initialize() {
   return true;
 }
 
-void Application::run() {
+void Application::run()
+{
   std::cout << "Application::run() called" << std::endl;
   std::cout.flush();
 
-  if (!glManager.isInitialized()) {
+  if (!glManager.isInitialized())
+  {
     std::cerr << "Application not initialized" << std::endl;
     return;
   }
@@ -510,78 +591,145 @@ void Application::run() {
   std::cout << "GL Manager is initialized, proceeding..." << std::endl;
   std::cout.flush();
 
-  // INSTANT MODE: Emit and trace all photons using OptiX (GPU)
-  if (!animatedMode) {
-    std::cout << "=== INSTANT MODE (OptiX GPU): Tracing " << maxPhotons
-              << " photons ===" << std::endl;
+  // INSTANT MODE: Emit and trace all photons using OptiX (GPU) OR load from file
+  if (!animatedMode)
+  {
     auto startTime = std::chrono::steady_clock::now();
 
-    // Get the quad light for photon emission
-    const auto &lights = scene.getLights();
-    if (!lights.empty() && lights[0]->isAreaLight()) {
-      const QuadLight *quadLight =
-          static_cast<const QuadLight *>(lights[0].get());
-
-      CUdeviceptr d_photonBuffer;
-      unsigned int storedCount = 0;
-      CUdeviceptr d_causticBuffer;
-      unsigned int causticCount = 0;
-
-      // Launch OptiX photon pass on GPU (returns both global and caustic
-      // photons)
-      optixManager.launchPhotonPass(
-          maxPhotons, *quadLight, scene.getQuadLightStartIndex(),
-          d_photonBuffer, storedCount, d_causticBuffer, causticCount);
-
-      auto endTime = std::chrono::steady_clock::now();
-      float elapsedMs =
-          std::chrono::duration<float, std::milli>(endTime - startTime).count();
-
-      std::cout << "=== OptiX Photon tracing complete ===" << std::endl;
-      std::cout << "  Photons launched: " << maxPhotons << std::endl;
-      std::cout << "  Global photons stored: " << storedCount << std::endl;
-      std::cout << "  Caustic photons stored: " << causticCount << std::endl;
-      std::cout << "  Time elapsed: " << elapsedMs << " ms" << std::endl;
-      std::cout << "  Rate: " << (maxPhotons / (elapsedMs / 1000.0f))
-                << " photons/sec" << std::endl;
-
-      // Copy GLOBAL photons from GPU to CPU
-      photonMap.clear();
-      if (storedCount > 0) {
-        photonMap.resize(storedCount);
-        cudaMemcpy(photonMap.data(), reinterpret_cast<void *>(d_photonBuffer),
-                   storedCount * sizeof(Photon), cudaMemcpyDeviceToHost);
+    // Option 1: Load photon map from file (skip tracing)
+    if (loadPhotonMap)
+    {
+      std::cout << "=== INSTANT MODE: Loading photon map from " << photonMapFile << " ===" << std::endl;
+      
+      if (PhotonMapIO::importFromFile(photonMapFile, photonMap, causticPhotonMap))
+      {
+        std::cout << "  Loaded " << photonMap.size() << " global + "
+                  << causticPhotonMap.size() << " caustic photons" << std::endl;
       }
-
-      // Copy CAUSTIC photons from GPU to CPU
-      causticPhotonMap.clear();
-      if (causticCount > 0) {
-        causticPhotonMap.resize(causticCount);
-        cudaMemcpy(causticPhotonMap.data(),
-                   reinterpret_cast<void *>(d_causticBuffer),
-                   causticCount * sizeof(Photon), cudaMemcpyDeviceToHost);
+      else
+      {
+        std::cerr << "Failed to load photon map! Falling back to tracing..." << std::endl;
+        loadPhotonMap = false;  // Fall through to tracing
       }
-
-      // Upload to renderer based on current display mode
-      if (rightViewportMode == MODE_GLOBAL_PHOTONS && !photonMap.empty()) {
-        photonMapRenderer->uploadFromHost(photonMap.data(), photonMap.size());
-        std::cout << "  Uploaded " << photonMap.size()
-                  << " GLOBAL photons to renderer" << std::endl;
-      } else if (rightViewportMode == MODE_CAUSTIC_PHOTONS &&
-                 !causticPhotonMap.empty()) {
-        photonMapRenderer->uploadFromHost(causticPhotonMap.data(),
-                                          causticPhotonMap.size());
-        std::cout << "  Uploaded " << causticPhotonMap.size()
-                  << " CAUSTIC photons to renderer" << std::endl;
-      }
-
-      std::cout
-          << "  Press M to cycle: Global Photons -> Caustics -> Direct Lighting"
-          << std::endl;
-    } else {
-      std::cerr << "No area light found for OptiX photon emission!"
-                << std::endl;
     }
+    
+    // Option 2: Trace photons using OptiX GPU
+    if (!loadPhotonMap)
+    {
+      std::cout << "=== INSTANT MODE (OptiX GPU): Tracing " << maxPhotons
+                << " photons ===" << std::endl;
+
+      // Get the quad light for photon emission
+      const auto &lights = scene.getLights();
+      if (!lights.empty() && lights[0]->isAreaLight())
+      {
+        const QuadLight *quadLight =
+            static_cast<const QuadLight *>(lights[0].get());
+
+        CUdeviceptr d_photonBuffer;
+        unsigned int storedCount = 0;
+        CUdeviceptr d_causticBuffer;
+        unsigned int causticCount = 0;
+
+        // Launch OptiX photon pass on GPU (returns both global and caustic photons)
+        // Optionally record full trajectories for debugging/visualization
+        std::vector<PhotonTrajectory> trajectories;
+        
+        if (recordTrajectories)
+        {
+          std::cout << "Trajectory recording enabled - will export to: " 
+                    << trajectoryOutputFile << std::endl;
+          optixManager.launchPhotonPassWithTrajectories(
+              maxPhotons, *quadLight, scene.getQuadLightStartIndex(),
+              d_photonBuffer, storedCount, d_causticBuffer, causticCount,
+              trajectories);
+          
+          // Export trajectories to file
+          if (TrajectoryExporter::exportToFile(trajectories, trajectoryOutputFile))
+          {
+            std::cout << "Exported " << trajectories.size() << " trajectories to " 
+                      << trajectoryOutputFile << std::endl;
+            std::cout << TrajectoryExporter::getSummary(trajectories) << std::endl;
+          }
+          else
+          {
+            std::cerr << "Failed to export trajectories!" << std::endl;
+          }
+        }
+        else
+        {
+          optixManager.launchPhotonPass(
+              maxPhotons, *quadLight, scene.getQuadLightStartIndex(),
+              d_photonBuffer, storedCount, d_causticBuffer, causticCount);
+        }
+
+        std::cout << "=== OptiX Photon tracing complete ===" << std::endl;
+        std::cout << "  Photons launched: " << maxPhotons << std::endl;
+        std::cout << "  Global photons stored: " << storedCount << std::endl;
+        std::cout << "  Caustic photons stored: " << causticCount << std::endl;
+
+        // Copy GLOBAL photons from GPU to CPU
+        photonMap.clear();
+        if (storedCount > 0)
+        {
+          photonMap.resize(storedCount);
+          cudaMemcpy(photonMap.data(), reinterpret_cast<void *>(d_photonBuffer),
+                     storedCount * sizeof(Photon), cudaMemcpyDeviceToHost);
+        }
+
+        // Copy CAUSTIC photons from GPU to CPU
+        causticPhotonMap.clear();
+        if (causticCount > 0)
+        {
+          causticPhotonMap.resize(causticCount);
+          cudaMemcpy(causticPhotonMap.data(),
+                     reinterpret_cast<void *>(d_causticBuffer),
+                     causticCount * sizeof(Photon), cudaMemcpyDeviceToHost);
+        }
+
+        // Save photon map to file if requested
+        if (savePhotonMap && (!photonMap.empty() || !causticPhotonMap.empty()))
+        {
+          PhotonMapIO::exportToFile(photonMap, causticPhotonMap, photonMapFile);
+        }
+      }
+      else
+      {
+        std::cerr << "No area light found for OptiX photon emission!" << std::endl;
+      }
+    }
+
+    auto endTime = std::chrono::steady_clock::now();
+    float elapsedMs =
+        std::chrono::duration<float, std::milli>(endTime - startTime).count();
+    std::cout << "  Time elapsed: " << elapsedMs << " ms" << std::endl;
+
+    // Upload photons to all renderers that need them
+    // 1. Upload to dot renderer (for visualization modes)
+    if (!photonMap.empty())
+    {
+      photonMapRenderer->uploadFromHost(photonMap.data(), photonMap.size());
+      std::cout << "  Uploaded " << photonMap.size() << " GLOBAL photons to dot renderer" << std::endl;
+    }
+
+    // 2. Upload to combined renderer (for actual rendering with KD-tree)
+    combinedRenderer->uploadGlobalPhotonMap(photonMap);
+    combinedRenderer->uploadCausticPhotonMap(causticPhotonMap);
+    std::cout << "  Uploaded photon maps to combined renderer (KD-tree built)" << std::endl;
+
+    // 3. Upload to specular renderer
+    specularLightRenderer->uploadGlobalPhotonMap(photonMap);
+    specularLightRenderer->uploadCausticPhotonMap(causticPhotonMap);
+
+    // 4. Export rendered images if requested
+    if (exportImages && (!photonMap.empty() || !causticPhotonMap.empty()))
+    {
+      exporterManager->setPhotonData(photonMap, causticPhotonMap);
+      exporterManager->exportAll(exportDir);
+    }
+
+    std::cout << "  Press M to cycle: Global Photons -> Caustics -> Direct Lighting"
+              << std::endl;
   }
 
   std::cout << "Entering main loop. Press ESC to exit." << std::endl;
@@ -595,7 +743,8 @@ void Application::run() {
 
   auto lastFrameTime = std::chrono::steady_clock::now();
 
-  while (isRunning && !glManager.shouldClose()) {
+  while (isRunning && !glManager.shouldClose())
+  {
     // Calculate delta time
     auto currentTime = std::chrono::steady_clock::now();
     float deltaTime =
@@ -605,13 +754,15 @@ void Application::run() {
     inputCommandManager->pollEvents();
 
     // ANIMATED MODE: Emit and update photons over time
-    if (animatedMode) {
+    if (animatedMode)
+    {
       // Emit photon at configured interval
       auto timeSinceLastEmission =
           std::chrono::duration<float>(currentTime - lastPhotonEmissionTime)
               .count();
       if (timeSinceLastEmission >= emissionInterval &&
-          animatedPhotons.size() < maxPhotons) {
+          animatedPhotons.size() < maxPhotons)
+      {
         emitPhoton();
         lastPhotonEmissionTime = currentTime;
       }
@@ -624,24 +775,38 @@ void Application::run() {
       leftRenderer->setAnimatedPhotons(animatedPhotons);
     }
 
-    try {
+    try
+    {
       leftRenderer->renderFrame();
-    } catch (const std::exception &e) {
+    }
+    catch (const std::exception &e)
+    {
       std::cerr << "Exception in left renderer: " << e.what() << std::endl;
     }
 
     // Render right viewport based on current mode
-    if (rightViewportMode == MODE_DIRECT_LIGHTING) {
+    if (rightViewportMode == MODE_DIRECT_LIGHTING)
+    {
       directLightRenderer->render();
-    } else if (rightViewportMode == MODE_INDIRECT_LIGHTING) {
+    }
+    else if (rightViewportMode == MODE_INDIRECT_LIGHTING)
+    {
       indirectLightRenderer->render();
-    } else if (rightViewportMode == MODE_CAUSTIC_LIGHTING) {
+    }
+    else if (rightViewportMode == MODE_CAUSTIC_LIGHTING)
+    {
       causticLightRenderer->render();
-    } else if (rightViewportMode == MODE_SPECULAR_LIGHTING) {
+    }
+    else if (rightViewportMode == MODE_SPECULAR_LIGHTING)
+    {
       specularLightRenderer->render();
-    } else if (rightViewportMode == MODE_COMBINED) {
+    }
+    else if (rightViewportMode == MODE_COMBINED)
+    {
       combinedRenderer->render();
-    } else {
+    }
+    else
+    {
       // MODE_GLOBAL_PHOTONS or MODE_CAUSTIC_PHOTONS
       photonMapRenderer->render();
     }
@@ -662,9 +827,11 @@ void Application::shutdown() { isRunning = false; }
 // INSTANT MODE: Emit all photons and trace them to completion immediately
 // ============================================================================
 
-void Application::emitAllPhotonsInstant() {
+void Application::emitAllPhotonsInstant()
+{
   const auto &lights = scene.getLights();
-  if (lights.empty() || !lights[0]->isAreaLight()) {
+  if (lights.empty() || !lights[0]->isAreaLight())
+  {
     std::cerr << "No area light found for photon emission!" << std::endl;
     return;
   }
@@ -677,7 +844,8 @@ void Application::emitAllPhotonsInstant() {
   // Reserve space for efficiency
   photonMap.reserve(maxPhotons * 3); // Estimate ~3 stored photons per emitted
 
-  for (unsigned int i = 0; i < maxPhotons; i++) {
+  for (unsigned int i = 0; i < maxPhotons; i++)
+  {
     AnimatedPhoton photon;
 
     // Generate random samples for position and direction
@@ -693,9 +861,12 @@ void Application::emitAllPhotonsInstant() {
     photon.emissionPosition = photon.position;
 
     // Set initial power
-    if (maxIntensity > 0.0f) {
+    if (maxIntensity > 0.0f)
+    {
       photon.power = lightIntensity / maxIntensity;
-    } else {
+    }
+    else
+    {
       photon.power = make_float3(1.0f, 1.0f, 1.0f);
     }
 
@@ -708,7 +879,8 @@ void Application::emitAllPhotonsInstant() {
     tracePhotonToCompletion(photon);
 
     // Progress output every 10%
-    if ((i + 1) % (maxPhotons / 10) == 0) {
+    if ((i + 1) % (maxPhotons / 10) == 0)
+    {
       std::cout << "  Progress: " << ((i + 1) * 100 / maxPhotons) << "% ("
                 << (i + 1) << "/" << maxPhotons << " photons, "
                 << photonMap.size() << " stored)" << std::endl;
@@ -716,13 +888,16 @@ void Application::emitAllPhotonsInstant() {
   }
 }
 
-void Application::tracePhotonToCompletion(AnimatedPhoton &photon) {
-  while (photon.isActive) {
+void Application::tracePhotonToCompletion(AnimatedPhoton &photon)
+{
+  while (photon.isActive)
+  {
     // Raycast to find next intersection
     CollisionResult collision =
         collisionDetector->raycast(photon.position, photon.direction, 10000.0f);
 
-    if (!collision.hit) {
+    if (!collision.hit)
+    {
       // Photon escaped the scene
       photon.isActive = false;
       break;
@@ -737,10 +912,12 @@ void Application::tracePhotonToCompletion(AnimatedPhoton &photon) {
     float survivalProbability = collision.diffuseProb;
     float randomValue = uniformDist(rng);
 
-    if (randomValue > survivalProbability) {
+    if (randomValue > survivalProbability)
+    {
       // Absorbed - but still store the photon if bounceCount > 0
       // This captures the incoming flux before absorption
-      if (photon.bounceCount > 0) {
+      if (photon.bounceCount > 0)
+      {
         Photon storedPhoton(
             collision.hitPoint,
             photon.power, // Store INCOMING power before absorption
@@ -754,7 +931,8 @@ void Application::tracePhotonToCompletion(AnimatedPhoton &photon) {
 
     // Store photon in map AFTER first bounce (bounceCount > 0)
     // Store BEFORE power modulation - this is the incoming flux
-    if (photon.bounceCount > 0) {
+    if (photon.bounceCount > 0)
+    {
       Photon storedPhoton(
           collision.hitPoint,
           photon.power, // Store INCOMING power (before surface modulation)
@@ -768,13 +946,15 @@ void Application::tracePhotonToCompletion(AnimatedPhoton &photon) {
     // Clamp power
     float maxPower =
         fmaxf(fmaxf(photon.power.x, photon.power.y), photon.power.z);
-    if (maxPower > 3.0f) {
+    if (maxPower > 3.0f)
+    {
       photon.power = photon.power / maxPower * 3.0f;
     }
 
     // Check max bounces
     photon.bounceCount++;
-    if (photon.bounceCount >= photon.maxBounces) {
+    if (photon.bounceCount >= photon.maxBounces)
+    {
       photon.isActive = false;
       break;
     }
@@ -791,7 +971,8 @@ void Application::tracePhotonToCompletion(AnimatedPhoton &photon) {
 // ANIMATED MODE: Emit photons one at a time with visual movement
 // ============================================================================
 
-void Application::emitPhoton() {
+void Application::emitPhoton()
+{
   if (animatedPhotons.size() >= maxPhotons)
     return;
 
@@ -820,10 +1001,13 @@ void Application::emitPhoton() {
   float3 lightIntensity = quadLight->getIntensity();
   float maxIntensity =
       fmaxf(fmaxf(lightIntensity.x, lightIntensity.y), lightIntensity.z);
-  if (maxIntensity > 0.0f) {
+  if (maxIntensity > 0.0f)
+  {
     photon.power =
         lightIntensity / maxIntensity; // Normalize to [0,1] for display
-  } else {
+  }
+  else
+  {
     photon.power = make_float3(1.0f, 1.0f, 1.0f); // Default white
   }
 
@@ -851,7 +1035,8 @@ void Application::emitPhoton() {
             << photon.power.z << ")" << std::endl;
 }
 
-float3 Application::sampleCosineHemisphere(const float3 &normal) {
+float3 Application::sampleCosineHemisphere(const float3 &normal)
+{
   // Generate two uniform random numbers
   float u1 = uniformDist(rng);
   float u2 = uniformDist(rng);
@@ -877,12 +1062,14 @@ float3 Application::sampleCosineHemisphere(const float3 &normal) {
   return normalize(worldDir);
 }
 
-void Application::updatePhotons(float deltaTime) {
+void Application::updatePhotons(float deltaTime)
+{
   // ANIMATED MODE: Simple visualization only - photons travel until first hit,
   // then stop. For actual photon mapping with bounces, use INSTANT MODE
   // (OptiX-based).
 
-  for (size_t i = 0; i < animatedPhotons.size(); i++) {
+  for (size_t i = 0; i < animatedPhotons.size(); i++)
+  {
     auto &photon = animatedPhotons[i];
     if (!photon.isActive)
       continue;
@@ -899,45 +1086,52 @@ void Application::updatePhotons(float deltaTime) {
     const float margin = 1.0f;
 
     // Floor (y = 0)
-    if (photon.position.y <= margin) {
+    if (photon.position.y <= margin)
+    {
       photon.position.y = margin;
       hitWall = true;
       hitColor = make_float3(0.8f, 0.8f, 0.8f); // white floor
     }
     // Ceiling
-    else if (photon.position.y >= Constants::Cornell::HEIGHT - margin) {
+    else if (photon.position.y >= Constants::Cornell::HEIGHT - margin)
+    {
       photon.position.y = Constants::Cornell::HEIGHT - margin;
       hitWall = true;
       hitColor = make_float3(0.8f, 0.8f, 0.8f); // white ceiling
     }
 
     // Left wall (x = 0) - RED
-    if (photon.position.x <= margin) {
+    if (photon.position.x <= margin)
+    {
       photon.position.x = margin;
       hitWall = true;
       hitColor = make_float3(0.8f, 0.0f, 0.0f); // red
     }
     // Right wall - BLUE
-    else if (photon.position.x >= Constants::Cornell::WIDTH - margin) {
+    else if (photon.position.x >= Constants::Cornell::WIDTH - margin)
+    {
       photon.position.x = Constants::Cornell::WIDTH - margin;
       hitWall = true;
       hitColor = make_float3(0.0f, 0.0f, 0.8f); // blue
     }
 
     // Back wall
-    if (photon.position.z >= Constants::Cornell::DEPTH - margin) {
+    if (photon.position.z >= Constants::Cornell::DEPTH - margin)
+    {
       photon.position.z = Constants::Cornell::DEPTH - margin;
       hitWall = true;
       hitColor = make_float3(0.8f, 0.8f, 0.8f); // white back
     }
     // Front (camera side) - photon escapes
-    else if (photon.position.z <= margin) {
+    else if (photon.position.z <= margin)
+    {
       photon.isActive = false;
       photon.velocity = make_float3(0.0f, 0.0f, 0.0f);
       continue;
     }
 
-    if (hitWall) {
+    if (hitWall)
+    {
       // Stop the photon at first hit - no CPU bouncing
       // This is just for visualizing emission direction
       photon.isActive = false;

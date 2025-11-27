@@ -1,6 +1,7 @@
 #include <optix.h>
 #include <sutil/vec_math.h>
 #include "direct_launch_params.h"
+#include "../photon_gather.h"  // For shared computeTriangleNormal
 
 extern "C" __constant__ DirectLaunchParams params;
 
@@ -38,31 +39,6 @@ __device__ bool traceOcclusionRay(const float3 &origin, const float3 &direction,
     );
     
     return p0 != 0u;
-}
-
-// Compute geometric triangle normal from vertex positions
-__device__ float3 computeTriangleNormal(const float3 &ray_dir)
-{
-    // Get triangle vertex positions using OptiX built-in
-    float3 vertices[3];
-    optixGetTriangleVertexData(
-        optixGetGASTraversableHandle(),
-        optixGetPrimitiveIndex(),
-        optixGetSbtGASIndex(),
-        0.0f,  // motion time
-        vertices
-    );
-
-    // Compute geometric normal from triangle edges
-    float3 edge1 = vertices[1] - vertices[0];
-    float3 edge2 = vertices[2] - vertices[0];
-    float3 normal = normalize(cross(edge1, edge2));
-
-    // Ensure normal faces toward the ray origin (front-facing)
-    if (dot(normal, ray_dir) > 0.0f)
-        normal = -normal;
-
-    return normal;
 }
 
 extern "C" __global__ void __closesthit__direct_triangle()
