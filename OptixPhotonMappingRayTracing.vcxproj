@@ -21,6 +21,16 @@
     <ProjectName>OptixPhotonMappingRayTracing</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  
+  <!-- ======================================================================
+       CONFIGURABLE PATHS - Edit these or pass via MSBuild /p:CUDA_PATH=...
+       ====================================================================== -->
+  <PropertyGroup Label="UserPaths">
+    <CUDA_PATH Condition="'$(CUDA_PATH)'==''">C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.0</CUDA_PATH>
+    <OPTIX_PATH Condition="'$(OPTIX_PATH)'==''">C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.0.0</OPTIX_PATH>
+    <OPTIX_SAMPLES_BUILD Condition="'$(OPTIX_SAMPLES_BUILD)'==''">C:\Users\emili\Desktop\proyectos\optix_samples_build</OPTIX_SAMPLES_BUILD>
+  </PropertyGroup>
+  
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <CharacterSet>MultiByte</CharacterSet>
@@ -51,9 +61,11 @@
     <TargetExt Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.exe</TargetExt>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkIncremental>
   </PropertyGroup>
+  
+  <!-- DEBUG -->
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.0.0\include;C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.0.0\SDK\cuda;C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.0.0\SDK;$(SolutionDir);C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.0\include;C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.0.0\SDK\support\imgui\..;C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.0.0\SDK\support\glfw-3.4\include;C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.0.0\SDK\support\.;C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.0.0\SDK\sutil;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(OPTIX_PATH)\include;$(OPTIX_PATH)\SDK\cuda;$(OPTIX_PATH)\SDK;$(SolutionDir);$(CUDA_PATH)\include;$(OPTIX_PATH)\SDK\support\imgui\..;$(OPTIX_PATH)\SDK\support\glfw-3.4\include;$(OPTIX_PATH)\SDK\support\.;$(OPTIX_PATH)\SDK\sutil;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>%(AdditionalOptions) /w34101 /w34189 /w34018 /w34389</AdditionalOptions>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
@@ -70,18 +82,20 @@
       <ObjectFileName>$(IntDir)</ObjectFileName>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>C:\Users\emili\Desktop\proyectos\optix_samples_build\lib\Debug\sutil_7_sdk.lib;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.0\lib\x64\cudart_static.lib;C:\Users\emili\Desktop\proyectos\optix_samples_build\lib\Debug\imgui.lib;C:\Users\emili\Desktop\proyectos\optix_samples_build\lib\Debug\glfw3dll.lib;C:\Users\emili\Desktop\proyectos\optix_samples_build\lib\Debug\glad.lib;opengl32.lib;glu32.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(OPTIX_SAMPLES_BUILD)\lib\Debug\sutil_7_sdk.lib;$(CUDA_PATH)\lib\x64\cudart_static.lib;$(OPTIX_SAMPLES_BUILD)\lib\Debug\imgui.lib;$(OPTIX_SAMPLES_BUILD)\lib\Debug\glfw3dll.lib;$(OPTIX_SAMPLES_BUILD)\lib\Debug\glad.lib;opengl32.lib;glu32.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <SubSystem>Console</SubSystem>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /Y /D "C:\Users\emili\Desktop\proyectos\optix_samples_build\bin\Debug\*.dll" "$(OutDir)"</Command>
+      <Command>xcopy /Y /D "$(OPTIX_SAMPLES_BUILD)\bin\Debug\*.dll" "$(OutDir)"</Command>
       <Message>Copying DLL dependencies to output directory</Message>
     </PostBuildEvent>
   </ItemDefinitionGroup>
+  
+  <!-- RELEASE -->
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.0.0\include;C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.0.0\SDK\cuda;C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.0.0\SDK;$(SolutionDir);C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.0\include;C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.0.0\SDK\support\imgui\..;C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.0.0\SDK\support\glfw-3.4\include;C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.0.0\SDK\support\.;C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.0.0\SDK\sutil;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(OPTIX_PATH)\include;$(OPTIX_PATH)\SDK\cuda;$(OPTIX_PATH)\SDK;$(SolutionDir);$(CUDA_PATH)\include;$(OPTIX_PATH)\SDK\support\imgui\..;$(OPTIX_PATH)\SDK\support\glfw-3.4\include;$(OPTIX_PATH)\SDK\support\.;$(OPTIX_PATH)\SDK\sutil;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>%(AdditionalOptions) /w34101 /w34189 /w34018 /w34389</AdditionalOptions>
       <DisableSpecificWarnings>4355;4996;4800</DisableSpecificWarnings>
       <ExceptionHandling>Sync</ExceptionHandling>
@@ -98,15 +112,17 @@
       <ObjectFileName>$(IntDir)</ObjectFileName>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>C:\Users\emili\Desktop\proyectos\optix_samples_build\lib\Release\sutil_7_sdk.lib;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.0\lib\x64\cudart_static.lib;C:\Users\emili\Desktop\proyectos\optix_samples_build\lib\Release\imgui.lib;C:\Users\emili\Desktop\proyectos\optix_samples_build\lib\Release\glfw3dll.lib;C:\Users\emili\Desktop\proyectos\optix_samples_build\lib\Release\glad.lib;opengl32.lib;glu32.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(OPTIX_SAMPLES_BUILD)\lib\Release\sutil_7_sdk.lib;$(CUDA_PATH)\lib\x64\cudart_static.lib;$(OPTIX_SAMPLES_BUILD)\lib\Release\imgui.lib;$(OPTIX_SAMPLES_BUILD)\lib\Release\glfw3dll.lib;$(OPTIX_SAMPLES_BUILD)\lib\Release\glad.lib;opengl32.lib;glu32.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <SubSystem>Console</SubSystem>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /Y /D "C:\Users\emili\Desktop\proyectos\optix_samples_build\bin\Release\*.dll" "$(OutDir)"</Command>
+      <Command>xcopy /Y /D "$(OPTIX_SAMPLES_BUILD)\bin\Release\*.dll" "$(OutDir)"</Command>
       <Message>Copying DLL dependencies to output directory</Message>
     </PostBuildEvent>
   </ItemDefinitionGroup>
+  
+  <!-- SOURCE FILES -->
   <ItemGroup>
     <ClCompile Include="src\optixPathTracer.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>

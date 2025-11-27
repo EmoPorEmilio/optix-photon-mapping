@@ -94,22 +94,13 @@ __device__ float3 computeDirectLight(const float3& hit_point, const float3& norm
     return albedo * NdotL * attenuation * 0.3f;
 }
 
-// Triangles return FULL lighting when hit by reflected/refracted rays
+// Triangles: handle both diffuse and specular (mirror) materials
 extern "C" __global__ void __closesthit__specular_triangle()
 {
     const unsigned int prim_idx = optixGetPrimitiveIndex();
     unsigned int depth = optixGetPayload_3();
     
-    // Primary rays hitting triangles = black (only show spheres)
-    if (depth == 0)
-    {
-        optixSetPayload_0(__float_as_uint(0.0f));
-        optixSetPayload_1(__float_as_uint(0.0f));
-        optixSetPayload_2(__float_as_uint(0.0f));
-        return;
-    }
-    
-    // Light source
+    // Light source - always visible
     if (prim_idx >= params.quadLightStartIndex)
     {
         optixSetPayload_0(__float_as_uint(1.0f));
@@ -123,14 +114,55 @@ extern "C" __global__ void __closesthit__specular_triangle()
     const float t_hit = optixGetRayTmax();
     const float3 hit_point = ray_origin + t_hit * ray_dir;
     
-    // Get normal and albedo
+    // Get normal and material
     float3 normal = getTriangleNormal(ray_dir);
-    float3 albedo = make_float3(0.8f, 0.8f, 0.8f);  // Default gray
+    float3 albedo = make_float3(0.8f, 0.8f, 0.8f);
+    int materialType = MATERIAL_DIFFUSE;
     
     if (params.triangle_materials)
+    {
         albedo = params.triangle_materials[prim_idx].albedo;
+        materialType = params.triangle_materials[prim_idx].type;
+    }
     
-    // Compute full lighting: direct + indirect + caustics
+    // Handle SPECULAR triangles (mirror quads) - trace reflection
+    if (materialType == MATERIAL_SPECULAR)
+    {
+        // Max recursion check
+        if (depth >= params.max_recursion_depth)
+        {
+            optixSetPayload_0(__float_as_uint(0.0f));
+            optixSetPayload_1(__float_as_uint(0.0f));
+            optixSetPayload_2(__float_as_uint(0.0f));
+            return;
+        }
+        
+        // Perfect mirror reflection
+        float3 reflect_dir = reflect(ray_dir, normal);
+        float3 reflect_origin = hit_point + normal * 0.001f;
+        
+        float3 color = traceSecondaryRay(reflect_origin, reflect_dir, depth);
+        color *= params.mirror_reflectivity;
+        
+        // Apply slight tint from albedo
+        color *= albedo;
+        
+        optixSetPayload_0(__float_as_uint(color.x));
+        optixSetPayload_1(__float_as_uint(color.y));
+        optixSetPayload_2(__float_as_uint(color.z));
+        return;
+    }
+    
+    // DIFFUSE triangles: primary rays = black (only show spheres/mirrors)
+    if (depth == 0)
+    {
+        optixSetPayload_0(__float_as_uint(0.0f));
+        optixSetPayload_1(__float_as_uint(0.0f));
+        optixSetPayload_2(__float_as_uint(0.0f));
+        return;
+    }
+    
+    // Compute full lighting for diffuse triangles hit by secondary rays
     float3 color = make_float3(0.0f);
     
     // Direct lighting

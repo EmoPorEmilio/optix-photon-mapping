@@ -3,6 +3,7 @@
 #include "Scene.h"
 #include "Triangle.h" 
 #include "Sphere.h"
+#include "Material.h"
 #include "../lighting/QuadLight.h"
 #include <optix_types.h> 
 
@@ -112,5 +113,35 @@ std::vector<float3> Scene::exportTriangleColors() const
     return colors;
 }
 
+std::vector<int> Scene::exportTriangleMaterialTypes() const
+{
+    std::vector<int> types;
+
+    // Get material types from all triangles
+    for (const auto& obj : objects)
+    {
+        Triangle* tri = dynamic_cast<Triangle*>(obj.get());
+        if (tri)
+        {
+            types.push_back(tri->getMaterialType());
+        }
+    }
+
+    // Lights are always diffuse (emissive)
+    for (const auto& light : lights)
+    {
+        if (light->isAreaLight())
+        {
+            const QuadLight* quadLight = dynamic_cast<const QuadLight*>(light.get());
+            if (quadLight)
+            {
+                types.push_back(MATERIAL_DIFFUSE); // First triangle
+                types.push_back(MATERIAL_DIFFUSE); // Second triangle
+            }
+        }
+    }
+
+    return types;
+}
 
 

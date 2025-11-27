@@ -65,6 +65,15 @@ private:
     // Caustic Photon Map (stores photons that hit S/T then diffuse)
     std::vector<Photon> causticPhotonMap;
 
+    // Sphere materials from config (for OptiX)
+    struct SphereMaterialInfo
+    {
+        int type;
+        float3 color;
+        float ior;
+    };
+    std::vector<SphereMaterialInfo> sphereMaterials;
+
     // Random number generator for Russian Roulette and bounce directions
     std::mt19937 rng;
     std::uniform_real_distribution<float> uniformDist;

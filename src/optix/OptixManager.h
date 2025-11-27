@@ -140,7 +140,8 @@ public:
     OptixPipeline getPipeline() const { return pipeline; }
     OptixTraversableHandle getIASHandle() const { return ias_handle; }
 
-    bool buildTriangleGAS(const std::vector<OptixVertex> &vertices, const std::vector<float3> &colors);
+    bool buildTriangleGAS(const std::vector<OptixVertex> &vertices, const std::vector<float3> &colors,
+                          const std::vector<int> &materialTypes = {});
     bool buildSphereGAS(float3 center1, float radius1, float3 center2, float radius2);
     bool buildIAS();
 

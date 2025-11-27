@@ -83,6 +83,26 @@ struct MeshObjectConfig
     float ior = 1.5f;
 };
 
+// Sphere object configuration
+struct SphereObjectConfig
+{
+    float3 center = make_float3(0.0f, 0.0f, 0.0f);
+    float radius = 50.0f;
+    std::string materialType = "diffuse";  // "diffuse", "specular", "transmissive"
+    float3 color = make_float3(0.8f, 0.8f, 0.8f);
+    float ior = 1.5f;  // For transmissive materials
+};
+
+// Quad object configuration (for mirrors, etc.)
+struct QuadObjectConfig
+{
+    float3 corner = make_float3(0.0f, 0.0f, 0.0f);  // Bottom-left corner
+    float3 edge1 = make_float3(1.0f, 0.0f, 0.0f);   // First edge direction (width)
+    float3 edge2 = make_float3(0.0f, 1.0f, 0.0f);   // Second edge direction (height)
+    std::string materialType = "diffuse";  // "diffuse", "specular"
+    float3 color = make_float3(0.8f, 0.8f, 0.8f);
+};
+
 // Simple configuration loader for photon mapping parameters from an XML file.
 struct PhotonMappingConfig
 {
@@ -98,6 +118,8 @@ struct PhotonMappingConfig
     CameraConfig camera;
 
     std::vector<MeshObjectConfig> meshes;
+    std::vector<SphereObjectConfig> spheres;
+    std::vector<QuadObjectConfig> quads;
 };
 
 class ConfigLoader

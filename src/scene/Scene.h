@@ -37,6 +37,9 @@ public:
     
     std::vector<float3> exportTriangleColors() const;
     
+    // Export material types for each triangle (MATERIAL_DIFFUSE, MATERIAL_SPECULAR, etc.)
+    std::vector<int> exportTriangleMaterialTypes() const;
+    
     
     unsigned int getQuadLightStartIndex() const { return quadLightStartIndex; }
     unsigned int getQuadLightTriangleCount() const { return quadLightTriangleCount; }

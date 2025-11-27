@@ -1292,7 +1292,8 @@ void OptixManager::launchSpecularLighting(unsigned int width, unsigned int heigh
     CUDA_CHECK(cudaFree((void *)d_params));
 }
 
-bool OptixManager::buildTriangleGAS(const std::vector<OptixVertex> &vertices, const std::vector<float3> &colors)
+bool OptixManager::buildTriangleGAS(const std::vector<OptixVertex> &vertices, const std::vector<float3> &colors,
+                                    const std::vector<int> &materialTypes)
 {
     if (!initialized)
     {
@@ -1317,17 +1318,35 @@ bool OptixManager::buildTriangleGAS(const std::vector<OptixVertex> &vertices, co
     CUDA_CHECK(cudaMalloc((void **)&d_triangle_colors, color_size));
     CUDA_CHECK(cudaMemcpy((void *)d_triangle_colors, colors.data(), color_size, cudaMemcpyHostToDevice));
 
-    // Allocate and upload diffuse materials for all triangle walls.
+    // Allocate and upload materials for all triangles.
     // Use the per-triangle color as the diffuse albedo so photons inherit
     // the Cornell box colors (red/blue/white), while diffuseProb controls
     // the 50% reflect / 50% absorb behavior.
     const size_t material_count = colors.size();
     std::vector<Material> host_materials(material_count);
+    int specularCount = 0;
     for (size_t i = 0; i < material_count; ++i)
     {
-        host_materials[i].type = MATERIAL_DIFFUSE;
-        host_materials[i].albedo = colors[i]; // carry wall color into photons
-        host_materials[i].diffuseProb = 0.5f; // 50% chance to continue
+        // Use provided material type if available, otherwise default to diffuse
+        if (!materialTypes.empty() && i < materialTypes.size())
+        {
+            host_materials[i].type = materialTypes[i];
+            if (materialTypes[i] == MATERIAL_SPECULAR)
+            {
+                specularCount++;
+                host_materials[i].diffuseProb = 0.0f; // No diffuse for specular
+            }
+            else
+            {
+                host_materials[i].diffuseProb = 0.5f;
+            }
+        }
+        else
+        {
+            host_materials[i].type = MATERIAL_DIFFUSE;
+            host_materials[i].diffuseProb = 0.5f;
+        }
+        host_materials[i].albedo = colors[i];
         host_materials[i].transmissiveCoeff = 0.0f;
     }
 
@@ -1336,7 +1355,7 @@ bool OptixManager::buildTriangleGAS(const std::vector<OptixVertex> &vertices, co
     CUDA_CHECK(cudaMemcpy((void *)d_triangle_materials, host_materials.data(), material_size, cudaMemcpyHostToDevice));
 
     std::cout << "Built Triangle GAS with " << (vertices.size() / 3) << " triangles, " << colors.size()
-              << " colors and basic diffuse materials" << std::endl;
+              << " colors (" << specularCount << " specular)" << std::endl;
     return true;
 }
 

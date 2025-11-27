@@ -20,22 +20,32 @@ static std::string trim(const std::string &s)
     return s.substr(start, end - start);
 }
 
-// Extract content between <tag>...</tag>
+// Extract content between <tag ...>...</tag> (handles tags with attributes)
 static bool extractTagContent(const std::string &text, const std::string &tag, std::string &out)
 {
-    std::string openTag = "<" + tag + ">";
+    std::string openTagStart = "<" + tag;
     std::string closeTag = "</" + tag + ">";
 
-    size_t start = text.find(openTag);
-    if (start == std::string::npos)
+    // Find opening tag (may have attributes)
+    size_t tagStart = text.find(openTagStart);
+    if (tagStart == std::string::npos)
         return false;
 
-    start += openTag.length();
-    size_t end = text.find(closeTag, start);
+    // Find the end of the opening tag (the '>')
+    size_t tagEnd = text.find(">", tagStart);
+    if (tagEnd == std::string::npos)
+        return false;
+
+    // Check for self-closing tag
+    if (tagEnd > 0 && text[tagEnd - 1] == '/')
+        return false;  // Self-closing tags have no content
+
+    size_t contentStart = tagEnd + 1;
+    size_t end = text.find(closeTag, contentStart);
     if (end == std::string::npos)
         return false;
 
-    out = trim(text.substr(start, end - start));
+    out = trim(text.substr(contentStart, end - contentStart));
     return true;
 }
 
@@ -291,7 +301,7 @@ PhotonMappingConfig ConfigLoader::load(const std::string &path)
         }
     }
 
-    // Parse mesh objects - find all <object type="mesh"> entries
+    // Parse all objects from <objects> block
     std::string objectsBlock;
     if (extractTagContent(text, "objects", objectsBlock))
     {
@@ -303,8 +313,7 @@ PhotonMappingConfig ConfigLoader::load(const std::string &path)
             if (objStart == std::string::npos)
                 break;
 
-            // Check if this is a self-closing <object .../> or has </object>
-            // First find the end of the opening tag
+            // Find the end of the opening tag
             size_t tagEnd = objectsBlock.find(">", objStart);
             if (tagEnd == std::string::npos)
                 break;
@@ -321,54 +330,107 @@ PhotonMappingConfig ConfigLoader::load(const std::string &path)
                 size_t objEndTag = objectsBlock.find("</object>", tagEnd);
                 if (objEndTag == std::string::npos)
                     break;
-                objEnd = objEndTag + 9; // length of "</object>"
+                objEnd = objEndTag + 9;
             }
 
             std::string objBlock = objectsBlock.substr(objStart, objEnd - objStart);
-
-            // Check if this is a mesh type
             std::string typeAttr;
-            if (extractAttribute(objBlock, "object", "type", typeAttr) && typeAttr == "mesh")
+            extractAttribute(objBlock, "object", "type", typeAttr);
+
+            // Parse MESH objects
+            if (typeAttr == "mesh")
             {
                 MeshObjectConfig mesh;
-
-                // Extract path
                 extractString(objBlock, "path", mesh.path);
 
-                // Extract position
                 float3 pos;
                 if (extractFloat3Attr(objBlock, "position", pos, false))
                     mesh.position = pos;
 
-                // Extract scale
                 float scaleVal;
                 if (extractNumber<float>(objBlock, "scale", scaleVal))
                     mesh.scale = scaleVal;
 
-                // Extract material type and color
                 std::string materialBlock;
                 if (extractTagContent(objBlock, "material", materialBlock))
                 {
-                    // Extract type attribute from material tag
                     std::string matType;
                     if (extractAttribute(objBlock, "material", "type", matType))
                         mesh.materialType = matType;
 
-                    // Extract color
                     float3 col;
                     if (extractFloat3Attr(materialBlock, "color", col, true))
                         mesh.color = col;
 
-                    // Extract IOR
                     float iorVal;
                     if (extractNumber<float>(materialBlock, "ior", iorVal))
                         mesh.ior = iorVal;
                 }
 
                 if (!mesh.path.empty())
-                {
                     cfg.meshes.push_back(mesh);
+            }
+            // Parse SPHERE objects
+            else if (typeAttr == "sphere")
+            {
+                SphereObjectConfig sphere;
+
+                float3 center;
+                if (extractFloat3Attr(objBlock, "center", center, false))
+                    sphere.center = center;
+
+                float radiusVal;
+                if (extractNumber<float>(objBlock, "radius", radiusVal))
+                    sphere.radius = radiusVal;
+
+                std::string materialBlock;
+                if (extractTagContent(objBlock, "material", materialBlock))
+                {
+                    std::string matType;
+                    if (extractAttribute(objBlock, "material", "type", matType))
+                        sphere.materialType = matType;
+
+                    float3 col;
+                    if (extractFloat3Attr(materialBlock, "color", col, true))
+                        sphere.color = col;
+
+                    float iorVal;
+                    if (extractNumber<float>(materialBlock, "ior", iorVal))
+                        sphere.ior = iorVal;
                 }
+
+                cfg.spheres.push_back(sphere);
+            }
+            // Parse QUAD objects (mirrors, etc.)
+            else if (typeAttr == "quad")
+            {
+                QuadObjectConfig quad;
+
+                float3 corner;
+                if (extractFloat3Attr(objBlock, "corner", corner, false))
+                    quad.corner = corner;
+
+                float3 edge1;
+                if (extractFloat3Attr(objBlock, "edge1", edge1, false))
+                    quad.edge1 = edge1;
+
+                float3 edge2;
+                if (extractFloat3Attr(objBlock, "edge2", edge2, false))
+                    quad.edge2 = edge2;
+
+                std::string materialBlock;
+                if (extractTagContent(objBlock, "material", materialBlock))
+                {
+                    std::string matType;
+                    if (extractAttribute(objBlock, "material", "type", matType))
+                        quad.materialType = matType;
+
+                    float3 col;
+                    if (extractFloat3Attr(materialBlock, "color", col, true))
+                        quad.color = col;
+                }
+
+                cfg.quads.push_back(quad);
             }
 
             searchPos = objEnd;
@@ -393,7 +455,19 @@ PhotonMappingConfig ConfigLoader::load(const std::string &path)
     std::cout << "  walls: left=(" << cfg.walls.left.x << "," << cfg.walls.left.y << "," << cfg.walls.left.z << ")"
               << ", right=(" << cfg.walls.right.x << "," << cfg.walls.right.y << "," << cfg.walls.right.z << ")"
               << std::endl;
-    std::cout << "  meshes: " << cfg.meshes.size() << " mesh object(s)" << std::endl;
+    std::cout << "  spheres: " << cfg.spheres.size() << " sphere(s)" << std::endl;
+    for (const auto &s : cfg.spheres)
+    {
+        std::cout << "    - " << s.materialType << " at (" << s.center.x << "," << s.center.y << "," << s.center.z
+                  << ") r=" << s.radius << std::endl;
+    }
+    std::cout << "  quads: " << cfg.quads.size() << " quad(s)" << std::endl;
+    for (const auto &q : cfg.quads)
+    {
+        std::cout << "    - " << q.materialType << " at (" << q.corner.x << "," << q.corner.y << "," << q.corner.z
+                  << ")" << std::endl;
+    }
+    std::cout << "  meshes: " << cfg.meshes.size() << " mesh(es)" << std::endl;
     for (const auto &m : cfg.meshes)
     {
         std::cout << "    - " << m.path << " at (" << m.position.x << "," << m.position.y << "," << m.position.z
