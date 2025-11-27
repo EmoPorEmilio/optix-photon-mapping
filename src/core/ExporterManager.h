@@ -43,6 +43,10 @@ public:
     void exportPhotonMap(const std::string& filename);
     void exportTrajectories(const std::vector<PhotonTrajectory>& trajectories, const std::string& filename);
     void exportAllRenderModes(const std::string& outputDir);
+    
+    // Export photon visualizations (dot displays like window mode)
+    void exportGlobalPhotonVisualization(const std::string& filename);
+    void exportCausticPhotonVisualization(const std::string& filename);
 
     // Configuration
     void setImageSize(unsigned int width, unsigned int height);
@@ -95,4 +99,5 @@ private:
     void copyBufferToHost();
     void applyGammaCorrection();
     void createDirectory(const std::string& path);
+    void renderPhotonsToBuffer(const std::vector<Photon>& photons, std::vector<unsigned char>& rgbBuffer);
 };

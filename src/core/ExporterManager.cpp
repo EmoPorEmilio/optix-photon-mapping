@@ -183,6 +183,114 @@ void ExporterManager::exportPhotonMap(const std::string& filename)
     PhotonMapIO::exportToFile(globalPhotons, causticPhotons, filename);
 }
 
+void ExporterManager::renderPhotonsToBuffer(const std::vector<Photon>& photons, std::vector<unsigned char>& rgbBuffer)
+{
+    // Clear to dark background
+    std::fill(rgbBuffer.begin(), rgbBuffer.end(), static_cast<unsigned char>(5));
+
+    if (!camera || photons.empty())
+        return;
+
+    float3 eye = camera->getPosition();
+    float3 U_exact = camera->getU();
+    float3 V_exact = camera->getV();
+    float3 W_exact = camera->getW();
+
+    float wlen = length(camera->getLookAt() - eye);
+    float vlen = length(V_exact);
+    float ulen = length(U_exact);
+
+    float3 f = normalize(camera->getLookAt() - eye);
+
+    for (size_t i = 0; i < photons.size(); ++i)
+    {
+        float3 p = photons[i].position;
+        float3 d = p - eye;
+
+        float dw = dot(d, f);
+        if (dw <= 0.0f)
+            continue;
+
+        float a = dot(d, U_exact) / (ulen * ulen);
+        float b = dot(d, V_exact) / (vlen * vlen);
+        float c = dot(d, W_exact) / (wlen * wlen);
+        if (c <= 0.0f)
+            continue;
+
+        float ndcX = a / c;
+        float ndcY = b / c;
+        if (ndcX < -1.0f || ndcX > 1.0f || ndcY < -1.0f || ndcY > 1.0f)
+            continue;
+
+        int px = static_cast<int>((ndcX * 0.5f + 0.5f) * (imageWidth - 1));
+        int py = static_cast<int>((ndcY * 0.5f + 0.5f) * (imageHeight - 1));
+        
+        if (px < 0 || py < 0 || px >= (int)imageWidth || py >= (int)imageHeight)
+            continue;
+
+        // Flip Y for image output (top-down)
+        int flippedY = imageHeight - 1 - py;
+        size_t idx = (static_cast<size_t>(flippedY) * imageWidth + static_cast<size_t>(px)) * 3;
+
+        // Visualize photon color based on stored power
+        float3 power = photons[i].power;
+        float maxComp = fmaxf(fmaxf(power.x, power.y), power.z);
+        float3 col;
+        if (maxComp > 0.0f)
+        {
+            col = power / maxComp;  // Normalize for visibility
+        }
+        else
+        {
+            col = make_float3(0.5f, 0.5f, 0.5f);  // Gray for zero power
+        }
+
+        rgbBuffer[idx + 0] = static_cast<unsigned char>(col.x * 255.0f);
+        rgbBuffer[idx + 1] = static_cast<unsigned char>(col.y * 255.0f);
+        rgbBuffer[idx + 2] = static_cast<unsigned char>(col.z * 255.0f);
+    }
+}
+
+void ExporterManager::exportGlobalPhotonVisualization(const std::string& filename)
+{
+    if (globalPhotons.empty())
+    {
+        std::cerr << "ExporterManager: No global photons to visualize" << std::endl;
+        return;
+    }
+
+    std::cout << "Rendering global photon visualization (" << globalPhotons.size() << " photons)..." << std::endl;
+
+    std::vector<unsigned char> rgbBuffer(imageWidth * imageHeight * 3);
+    renderPhotonsToBuffer(globalPhotons, rgbBuffer);
+
+    int result = stbi_write_png(filename.c_str(), imageWidth, imageHeight, 3, rgbBuffer.data(), imageWidth * 3);
+    if (result)
+        std::cout << "  Saved: " << filename << std::endl;
+    else
+        std::cerr << "  Failed to save: " << filename << std::endl;
+}
+
+void ExporterManager::exportCausticPhotonVisualization(const std::string& filename)
+{
+    if (causticPhotons.empty())
+    {
+        std::cerr << "ExporterManager: No caustic photons to visualize" << std::endl;
+        return;
+    }
+
+    std::cout << "Rendering caustic photon visualization (" << causticPhotons.size() << " photons)..." << std::endl;
+
+    std::vector<unsigned char> rgbBuffer(imageWidth * imageHeight * 3);
+    renderPhotonsToBuffer(causticPhotons, rgbBuffer);
+
+    int result = stbi_write_png(filename.c_str(), imageWidth, imageHeight, 3, rgbBuffer.data(), imageWidth * 3);
+    if (result)
+        std::cout << "  Saved: " << filename << std::endl;
+    else
+        std::cerr << "  Failed to save: " << filename << std::endl;
+}
+
 void ExporterManager::exportTrajectories(const std::vector<PhotonTrajectory>& trajectories, const std::string& filename)
 {
     TrajectoryExporter::exportToFile(trajectories, filename);
@@ -201,6 +309,14 @@ void ExporterManager::exportAllRenderModes(const std::string& outputDir)
     createDirectory(outputDir);
     allocateBuffers();
     uploadPhotonsToGPU();
+
+    // 0a. Global photon map visualization (dots)
+    if (!globalPhotons.empty())
+        exportGlobalPhotonVisualization(outputDir + "/global_photons.png");
+
+    // 0b. Caustic photon map visualization (dots)
+    if (!causticPhotons.empty())
+        exportCausticPhotonVisualization(outputDir + "/caustic_photons.png");
 
     // 1. Direct lighting
     std::cout << "Rendering direct lighting..." << std::endl;
