@@ -4,17 +4,17 @@
 
 extern "C" __constant__ SpecularLaunchParams params;
 
-// Hardcoded sphere data
+// Hardcoded sphere data - must match configuration.xml
 __device__ const float3 sphere_centers[2] = {
-    {185.0f, 82.5f, 169.0f},
-    {368.0f, 103.5f, 351.0f}
+    {185.0f, 82.5f, 169.0f}, // Sphere 1 (transmissive/glass)
+    {368.0f, 82.5f, 351.0f}  // Sphere 2 (specular/mirror)
 };
-__device__ const float sphere_radii[2] = {82.5f, 103.5f};
+__device__ const float sphere_radii[2] = {82.5f, 82.5f};
 
 extern "C" __global__ void __intersection__specular_sphere()
 {
     const unsigned int prim_idx = optixGetPrimitiveIndex();
-    
+
     const float3 ray_origin = optixGetWorldRayOrigin();
     const float3 ray_direction = optixGetWorldRayDirection();
 
@@ -44,9 +44,7 @@ extern "C" __global__ void __intersection__specular_sphere()
                 0,
                 __float_as_uint(normal.x),
                 __float_as_uint(normal.y),
-                __float_as_uint(normal.z)
-            );
+                __float_as_uint(normal.z));
         }
     }
 }
-

@@ -197,11 +197,11 @@ void OptixManager::launchPhotonPass(unsigned int num_photons, const QuadLight &l
     params.handle = ias_handle;
     params.light = light;
     params.num_photons = num_photons;
-    
+
     // Photon power: distribute light intensity across all photons
     // Using original formula for compatibility with existing brightness tuning
     params.photon_power = light.getIntensity() / static_cast<float>(num_photons);
-    
+
     params.quadLightStartIndex = quadLightStartIndex;
     params.triangle_colors = reinterpret_cast<float3 *>(d_triangle_colors);
 
@@ -223,8 +223,8 @@ void OptixManager::launchPhotonPass(unsigned int num_photons, const QuadLight &l
     // Match the analytic sphere geometry used in the render pass.
     params.sphere1.center = make_float3(185.0f, 82.5f, 169.0f);
     params.sphere1.radius = 82.5f;
-    params.sphere2.center = make_float3(368.0f, 103.5f, 351.0f);
-    params.sphere2.radius = 103.5f;
+    params.sphere2.center = make_float3(368.0f, 82.5f, 351.0f);
+    params.sphere2.radius = 82.5f;
     params.max_depth = 8;
 
     // Global photon map output
@@ -1266,7 +1266,7 @@ void OptixManager::launchSpecularLighting(unsigned int width, unsigned int heigh
     params.global_kdtree.num_nodes = 0;
     params.global_kdtree.max_depth = 0;
     params.global_kdtree.valid = false;
-    
+
     params.caustic_kdtree.nodes = nullptr;
     params.caustic_kdtree.num_nodes = 0;
     params.caustic_kdtree.max_depth = 0;

@@ -119,11 +119,11 @@ private:
     // Sphere geometry data
     float3 sphere1_center = make_float3(185.0f, 82.5f, 169.0f);
     float sphere1_radius = 82.5f;
-    float3 sphere2_center = make_float3(368.0f, 103.5f, 351.0f);
-    float sphere2_radius = 103.5f;
+    float3 sphere2_center = make_float3(368.0f, 82.5f, 351.0f);
+    float sphere2_radius = 82.5f;
 
     // Light geometry info
-    unsigned int quadLightStartIndex = 10;  // Default, should be updated from scene
+    unsigned int quadLightStartIndex = 10; // Default, should be updated from scene
 
     bool initialized = false;
 
