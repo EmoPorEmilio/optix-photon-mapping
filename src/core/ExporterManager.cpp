@@ -28,7 +28,7 @@ void ExporterManager::setPhotonData(const std::vector<Photon>& global, const std
 {
     globalPhotons = global;
     causticPhotons = caustic;
-    photonsUploaded = false;  // Need to re-upload
+    photonsUploaded = false;
 }
 
 void ExporterManager::setImageSize(unsigned int width, unsigned int height)
@@ -37,7 +37,7 @@ void ExporterManager::setImageSize(unsigned int width, unsigned int height)
     {
         imageWidth = width;
         imageHeight = height;
-        freeBuffers();  // Will reallocate on next use
+        freeBuffers();
     }
 }
 
@@ -153,29 +153,23 @@ void ExporterManager::applyGammaCorrection()
 
 bool ExporterManager::saveBufferToPng(const std::string& filename)
 {
-    // Convert float4 buffer to RGB bytes (flipped vertically for image format)
     std::vector<unsigned char> rgbData(imageWidth * imageHeight * 3);
 
     for (unsigned int y = 0; y < imageHeight; ++y)
     {
         for (unsigned int x = 0; x < imageWidth; ++x)
         {
-            // Flip Y for image output (OpenGL/CUDA has origin at bottom-left)
-            unsigned int srcIdx = (imageHeight - 1 - y) * imageWidth + x;
+            unsigned int srcIdx = (imageHeight - 1 - y) * imageWidth + x;  // flip Y
             unsigned int dstIdx = (y * imageWidth + x) * 3;
 
             float4 pixel = h_outputBuffer[srcIdx];
-            
-            // Clamp and convert to bytes
             rgbData[dstIdx + 0] = static_cast<unsigned char>(std::min(255.0f, std::max(0.0f, pixel.x * 255.0f)));
             rgbData[dstIdx + 1] = static_cast<unsigned char>(std::min(255.0f, std::max(0.0f, pixel.y * 255.0f)));
             rgbData[dstIdx + 2] = static_cast<unsigned char>(std::min(255.0f, std::max(0.0f, pixel.z * 255.0f)));
         }
     }
 
-    // stride_in_bytes = width * channels
-    int result = stbi_write_png(filename.c_str(), imageWidth, imageHeight, 3, rgbData.data(), imageWidth * 3);
-    return result != 0;
+    return stbi_write_png(filename.c_str(), imageWidth, imageHeight, 3, rgbData.data(), imageWidth * 3) != 0;
 }
 
 void ExporterManager::exportPhotonMap(const std::string& filename)
@@ -185,7 +179,6 @@ void ExporterManager::exportPhotonMap(const std::string& filename)
 
 void ExporterManager::renderPhotonsToBuffer(const std::vector<Photon>& photons, std::vector<unsigned char>& rgbBuffer)
 {
-    // Clear to dark background
     std::fill(rgbBuffer.begin(), rgbBuffer.end(), static_cast<unsigned char>(5));
 
     if (!camera || photons.empty())
@@ -228,22 +221,12 @@ void ExporterManager::renderPhotonsToBuffer(const std::vector<Photon>& photons, 
         if (px < 0 || py < 0 || px >= (int)imageWidth || py >= (int)imageHeight)
             continue;
 
-        // Flip Y for image output (top-down)
         int flippedY = imageHeight - 1 - py;
         size_t idx = (static_cast<size_t>(flippedY) * imageWidth + static_cast<size_t>(px)) * 3;
 
-        // Visualize photon color based on stored power
         float3 power = photons[i].power;
         float maxComp = fmaxf(fmaxf(power.x, power.y), power.z);
-        float3 col;
-        if (maxComp > 0.0f)
-        {
-            col = power / maxComp;  // Normalize for visibility
-        }
-        else
-        {
-            col = make_float3(0.5f, 0.5f, 0.5f);  // Gray for zero power
-        }
+        float3 col = (maxComp > 0.0f) ? power / maxComp : make_float3(0.5f, 0.5f, 0.5f);
 
         rgbBuffer[idx + 0] = static_cast<unsigned char>(col.x * 255.0f);
         rgbBuffer[idx + 1] = static_cast<unsigned char>(col.y * 255.0f);
@@ -310,15 +293,11 @@ void ExporterManager::exportAllRenderModes(const std::string& outputDir)
     allocateBuffers();
     uploadPhotonsToGPU();
 
-    // 0a. Global photon map visualization (dots)
     if (!globalPhotons.empty())
         exportGlobalPhotonVisualization(outputDir + "/global_photons.png");
 
-    // 0b. Caustic photon map visualization (dots)
     if (!causticPhotons.empty())
         exportCausticPhotonVisualization(outputDir + "/caustic_photons.png");
-
-    // 1. Direct lighting
     std::cout << "Rendering direct lighting..." << std::endl;
     optixManager->launchDirectLighting(imageWidth, imageHeight, *camera,
                                        directAmbient, directShadowAmbient,
@@ -330,7 +309,6 @@ void ExporterManager::exportAllRenderModes(const std::string& outputDir)
     if (saveBufferToPng(filename))
         std::cout << "  Saved: " << filename << std::endl;
 
-    // 2. Indirect lighting
     if (!globalPhotons.empty())
     {
         std::cout << "Rendering indirect lighting..." << std::endl;
@@ -347,7 +325,6 @@ void ExporterManager::exportAllRenderModes(const std::string& outputDir)
             std::cout << "  Saved: " << filename << std::endl;
     }
 
-    // 3. Caustic lighting
     if (!causticPhotons.empty())
     {
         std::cout << "Rendering caustic lighting..." << std::endl;
@@ -365,7 +342,6 @@ void ExporterManager::exportAllRenderModes(const std::string& outputDir)
             std::cout << "  Saved: " << filename << std::endl;
     }
 
-    // 4. Specular lighting
     std::cout << "Rendering specular lighting..." << std::endl;
     OptixManager::SpecularParams specParams;
     specParams.gather_radius = gatherRadius;
@@ -386,7 +362,6 @@ void ExporterManager::exportAllRenderModes(const std::string& outputDir)
     if (saveBufferToPng(filename))
         std::cout << "  Saved: " << filename << std::endl;
 
-    // 5. Combined (render all and combine)
     std::cout << "Rendering combined image..." << std::endl;
     
     float4 *d_direct, *d_indirect, *d_caustic, *d_specular;
@@ -431,7 +406,6 @@ void ExporterManager::exportAllRenderModes(const std::string& outputDir)
                                          causticKDTree.getDeviceTree(),
                                          specParams, d_specular);
 
-    // Copy all to host and combine
     std::vector<float4> h_direct(imageWidth * imageHeight);
     std::vector<float4> h_indirect(imageWidth * imageHeight);
     std::vector<float4> h_caustic(imageWidth * imageHeight);
@@ -442,14 +416,12 @@ void ExporterManager::exportAllRenderModes(const std::string& outputDir)
     cudaMemcpy(h_caustic.data(), d_caustic, bufSize, cudaMemcpyDeviceToHost);
     cudaMemcpy(h_specular.data(), d_specular, bufSize, cudaMemcpyDeviceToHost);
 
-    // Combine with weights
     for (unsigned int i = 0; i < imageWidth * imageHeight; ++i)
     {
         float r = h_direct[i].x + h_indirect[i].x + h_caustic[i].x + h_specular[i].x * 0.5f;
         float g = h_direct[i].y + h_indirect[i].y + h_caustic[i].y + h_specular[i].y * 0.5f;
         float b = h_direct[i].z + h_indirect[i].z + h_caustic[i].z + h_specular[i].z * 0.5f;
 
-        // Apply gamma
         r = powf(std::max(0.0f, std::min(1.0f, r)), Constants::Render::INV_GAMMA);
         g = powf(std::max(0.0f, std::min(1.0f, g)), Constants::Render::INV_GAMMA);
         b = powf(std::max(0.0f, std::min(1.0f, b)), Constants::Render::INV_GAMMA);
@@ -471,15 +443,9 @@ void ExporterManager::exportAllRenderModes(const std::string& outputDir)
 
 void ExporterManager::exportAll(const std::string& outputDir)
 {
-    std::cout << "\n=== Full Export to " << outputDir << " ===" << std::endl;
-
+    std::cout << "\n=== Exporting to " << outputDir << " ===" << std::endl;
     createDirectory(outputDir);
-
-    // Export photon map data
     exportPhotonMap(outputDir + "/photon_map.txt");
-
-    // Export all rendered images
     exportAllRenderModes(outputDir);
-
-    std::cout << "=== Full export complete ===" << std::endl;
+    std::cout << "=== Done ===" << std::endl;
 }

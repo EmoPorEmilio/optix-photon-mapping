@@ -7,10 +7,6 @@
 #include <sstream>
 #include <iomanip>
 
-//=============================================================================
-// TrajectoryExporter
-// Exports photon trajectories to human-readable text files for debugging
-//=============================================================================
 class TrajectoryExporter
 {
 public:

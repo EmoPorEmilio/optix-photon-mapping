@@ -17,13 +17,7 @@
 class OptixManager;
 class Scene;
 
-//=============================================================================
-// ExporterManager
-// Centralized manager for all export operations:
-// - Rendered images (JPG) for each lighting mode
-// - Photon map data (TXT)
-// - Photon trajectories (TXT)
-//=============================================================================
+// Handles export of rendered images (PNG) and photon data (TXT)
 class ExporterManager
 {
 public:

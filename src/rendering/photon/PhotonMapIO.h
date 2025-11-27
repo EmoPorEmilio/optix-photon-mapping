@@ -8,19 +8,12 @@
 #include <iomanip>
 #include <iostream>
 
-//=============================================================================
-// PhotonMapIO
-// Import/Export photon maps to/from parseable text files
-// Allows saving traced photons and reloading without re-tracing
-//=============================================================================
+// Load/save photon maps to text files
 class PhotonMapIO
 {
 public:
     static constexpr int VERSION = 1;
 
-    //-------------------------------------------------------------------------
-    // Export photon maps to file
-    //-------------------------------------------------------------------------
     static bool exportToFile(const std::vector<Photon>& globalPhotons,
                              const std::vector<Photon>& causticPhotons,
                              const std::string& filename)
@@ -70,9 +63,6 @@ public:
         return true;
     }
 
-    //-------------------------------------------------------------------------
-    // Import photon maps from file
-    //-------------------------------------------------------------------------
     static bool importFromFile(const std::string& filename,
                                std::vector<Photon>& globalPhotons,
                                std::vector<Photon>& causticPhotons)
@@ -170,9 +160,6 @@ public:
     }
 
 private:
-    //-------------------------------------------------------------------------
-    // Parse a single photon line (CSV format)
-    //-------------------------------------------------------------------------
     static bool parsePhotonLine(const std::string& line, Photon& p)
     {
         std::stringstream ss(line);

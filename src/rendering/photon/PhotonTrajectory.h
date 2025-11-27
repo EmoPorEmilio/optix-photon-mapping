@@ -2,21 +2,14 @@
 
 #include <sutil/vec_math.h>
 
-//=============================================================================
-// Photon Trajectory Recording System
-// Records the complete journey of photons for debugging and visualization
-//=============================================================================
+// Records photon paths for debugging/visualization
 
-// CUDA host/device compatibility
 #ifdef __CUDACC__
 #define TRAJECTORY_HOSTDEVICE __host__ __device__
 #else
 #define TRAJECTORY_HOSTDEVICE
 #endif
 
-//-----------------------------------------------------------------------------
-// Event types that can occur during photon transport
-//-----------------------------------------------------------------------------
 enum PhotonEventType
 {
     EVENT_NONE = 0,          // Unused slot
@@ -32,9 +25,6 @@ enum PhotonEventType
     EVENT_HIT_LIGHT          // Hit light source geometry
 };
 
-//-----------------------------------------------------------------------------
-// Material types (mirrors Material.h for trajectory recording)
-//-----------------------------------------------------------------------------
 enum TrajectoryMaterialType
 {
     TRAJ_MAT_NONE = -1,
@@ -43,9 +33,6 @@ enum TrajectoryMaterialType
     TRAJ_MAT_TRANSMISSIVE = 2
 };
 
-//-----------------------------------------------------------------------------
-// Single event in a photon's trajectory
-//-----------------------------------------------------------------------------
 struct PhotonEvent
 {
     float3 position;         // World position of this event
@@ -76,21 +63,17 @@ struct PhotonEvent
           _pad(0) {}
 };
 
-//-----------------------------------------------------------------------------
-// Complete trajectory of a single photon
-//-----------------------------------------------------------------------------
-#define MAX_TRAJECTORY_EVENTS 14  // max_depth(10) + emission + possible extra events
+#define MAX_TRAJECTORY_EVENTS 14
 
 struct PhotonTrajectory
 {
-    unsigned int photon_id;                      // Which photon this is
-    unsigned int event_count;                    // Number of valid events recorded
-    PhotonEvent events[MAX_TRAJECTORY_EVENTS];   // Event history
+    unsigned int photon_id;
+    unsigned int event_count;
+    PhotonEvent events[MAX_TRAJECTORY_EVENTS];
 
     TRAJECTORY_HOSTDEVICE PhotonTrajectory()
         : photon_id(0), event_count(0) {}
 
-    // Add an event to this trajectory (GPU-safe)
     TRAJECTORY_HOSTDEVICE bool addEvent(const PhotonEvent &evt)
     {
         if (event_count < MAX_TRAJECTORY_EVENTS)
@@ -101,7 +84,6 @@ struct PhotonTrajectory
         return false;
     }
 
-    // Add event with individual parameters (convenience)
     TRAJECTORY_HOSTDEVICE bool addEvent(int type, const float3 &pos, const float3 &dir,
                                          const float3 &pow, int mat = TRAJ_MAT_NONE)
     {
@@ -109,9 +91,6 @@ struct PhotonTrajectory
     }
 };
 
-//-----------------------------------------------------------------------------
-// Helper to get string name for event type (CPU only)
-//-----------------------------------------------------------------------------
 #ifndef __CUDACC__
 inline const char* getEventTypeName(int type)
 {

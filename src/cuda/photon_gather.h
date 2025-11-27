@@ -1,23 +1,16 @@
 #pragma once
 
-// Common photon gathering functions for all lighting passes
-// Shared device code to eliminate duplication across shaders
+// Shared photon gathering for all lighting passes
 
 #include <sutil/vec_math.h>
 #include "../rendering/photon/Photon.h"
 #include "../rendering/photon/PhotonKDTreeDevice.h"
 
-//=============================================================================
-// Constants for radiance estimation (Jensen's algorithm)
-// Jensen's formula: L = (ρ/π) * (k/(π*r²)) * Σ(Φ_p * w_p) for Lambertian surfaces
-// where k = 3 for the cone filter w(d) = 1 - d/r
-//=============================================================================
 #define PM_PI 3.14159265358979323846f
-#define PM_INV_PI 0.31830988618379067154f  // 1/π - Lambertian BRDF normalization
-#define PM_CONE_FILTER_K 3.0f              // Cone filter normalization factor
-#define PM_CAUSTIC_RADIUS_MULT 0.5f        // Caustics use tighter gather radius
+#define PM_INV_PI 0.31830988618379067154f
+#define PM_CONE_FILTER_K 3.0f
+#define PM_CAUSTIC_RADIUS_MULT 0.5f
 
-// Compute geometric triangle normal from vertex positions (shared utility)
 static __forceinline__ __device__ float3 computeTriangleNormal(const float3 &ray_dir)
 {
     float3 vertices[3];
@@ -32,16 +25,13 @@ static __forceinline__ __device__ float3 computeTriangleNormal(const float3 &ray
     float3 edge2 = vertices[2] - vertices[0];
     float3 normal = normalize(cross(edge1, edge2));
 
-    // Ensure normal faces toward the ray origin
     if (dot(normal, ray_dir) > 0.0f)
         normal = -normal;
 
     return normal;
 }
 
-// Linear photon gathering - O(n) fallback when no acceleration structure is available
-// Jensen's radiance estimation with cone filter: L = (k / (π*r²)) * Σ(Φ_p * w_p)
-// where k=3 for the (1-d/r) cone filter weight function
+// Linear O(n) fallback when KD-tree unavailable
 static __forceinline__ __device__ float3 gatherPhotonsLinear(
     const float3 &hit_point,
     const float3 &normal,
@@ -64,32 +54,26 @@ static __forceinline__ __device__ float3 gatherPhotonsLinear(
 
         if (dist_sq < radius_sq)
         {
-            // Check if photon is on the correct side of the surface
             float incidentDot = dot(photon.incidentDir, normal);
             if (incidentDot < 0.0f)
             {
-                // Cone filter weight (gives more weight to closer photons)
                 float weight = 1.0f - sqrtf(dist_sq) / gather_radius;
                 flux_sum += photon.power * weight;
             }
         }
     }
 
-    // Apply Jensen's radiance estimation formula: L = (k/(π*r²)) * (1/π) * Σ(Φ_p * w_p)
-    // The (1/π) factor is the Lambertian BRDF normalization; albedo applied separately
     float area = PM_PI * radius_sq;
     float3 radiance = flux_sum * (PM_CONE_FILTER_K / area) * PM_INV_PI;
 
     return radiance;
 }
 
-// Linear gathering with albedo modulation for indirect illumination
 static __forceinline__ __device__ float axisValue(const float3 &p, int axis)
 {
     return axis == 0 ? p.x : (axis == 1 ? p.y : p.z);
 }
 
-// kd-tree photon gathering (O(log n))
 static __forceinline__ __device__ float3 gatherPhotonsKDTree(
     const float3 &hit_point,
     const float3 &normal,
@@ -137,13 +121,10 @@ static __forceinline__ __device__ float3 gatherPhotonsKDTree(
             stack[stack_ptr++] = static_cast<unsigned int>(farChild);
     }
 
-    // Apply Jensen's radiance estimation formula with Lambertian BRDF normalization
     float area = PM_PI * radius_sq;
-    float3 radiance = flux_sum * (PM_CONE_FILTER_K / area) * PM_INV_PI;
-    return radiance;
+    return flux_sum * (PM_CONE_FILTER_K / area) * PM_INV_PI;
 }
 
-// Gather helper that prefers kd-tree but falls back to linear search.
 static __forceinline__ __device__ float3 gatherPhotonsRadiance(
     const float3 &hit_point,
     const float3 &normal,
