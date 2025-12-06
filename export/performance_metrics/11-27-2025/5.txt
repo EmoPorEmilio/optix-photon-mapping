@@ -1,0 +1,79 @@
+================================================================================
+                        PERFORMANCE METRICS REPORT                              
+================================================================================
+
+Generated: Thu Nov 27 19:22:45 2025
+
+================================================================================
+                            CONFIGURATION USED                                  
+================================================================================
+
+[Photon Mapping]
+  Max Photons: 100000
+  Collision Radius: 5
+
+[Animation]
+  Enabled: false
+  Speed: 500
+  Emission Interval: 0.01
+
+[Debug]
+  Record Trajectories: false
+  Save Photon Map: false
+  Load Photon Map: false
+  Photon Map File: photon_map.txt
+  Export Images: true
+  Export Metrics: true
+  Export Dir: export
+
+[Gathering]
+  Indirect Radius: 200
+  Caustic Radius: 50
+  Indirect Brightness: 50000
+  Caustic Brightness: 50000
+
+[Direct Lighting]
+  Ambient: 0.03
+  Shadow Ambient: 0.02
+  Intensity: 0.5
+  Attenuation: 1e-05
+
+[Specular]
+  Max Depth: 10
+  Glass IOR: 1.1
+  Mirror Reflectivity: 0.95
+  Fresnel Min: 0.04
+  Glass Tint: (0.98, 0.99, 1)
+
+[Weights]
+  Direct: 1
+  Indirect: 1
+  Caustics: 1
+  Specular: 0.5
+
+[Scene Objects]
+  Spheres: 2
+  Meshes: 1
+  Quads: 0
+
+
+--------------------------------------------------------------------------------
+Task Name                            Total (ms)     Calls    Avg (ms)    Min (ms)    Max (ms)       %
+--------------------------------------------------------------------------------
+Application::initialize (total)          598.46         1      598.46      598.46      598.46  52.13%
+OptiX::initialize                        212.34         1      212.34      212.34      212.34  18.50%
+PhotonUpload::combinedRenderer (KD-tree)      116.40         1      116.40      116.40      116.40  10.14%
+PhotonUpload::specularRenderer (KD-tree)      113.24         1      113.24      113.24      113.24   9.86%
+OptiX::createPipelines                    60.19         1       60.19       60.19       60.19   5.24%
+OptiX::buildIAS                           13.17         1       13.17       13.17       13.17   1.15%
+ConfigLoader::load                        11.59         1       11.59       11.59       11.59   1.01%
+OptiX::buildTriangleGAS                   11.44         1       11.44       11.44       11.44   1.00%
+PhotonTracing::copyToHost                  4.36         1        4.36        4.36        4.36   0.38%
+PhotonUpload::dotRenderer                  2.66         1        2.66        2.66        2.66   0.23%
+PhotonTracing::launchPhotonPass            2.26         1        2.26        2.26        2.26   0.20%
+Scene::exportGeometry                      1.63         1        1.63        1.63        1.63   0.14%
+OptiX::buildSphereGAS                      0.31         1        0.31        0.31        0.31   0.03%
+ExporterManager::exportAll                 0.00         0        0.00        0.00        0.00   0.00%
+--------------------------------------------------------------------------------
+TOTAL                                   1148.04 ms (1.15 seconds)
+================================================================================

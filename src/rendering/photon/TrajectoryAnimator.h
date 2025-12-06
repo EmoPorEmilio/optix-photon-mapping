@@ -263,3 +263,4 @@ private:
     size_t m_nextPhotonToActivate = 0;
 };
 
+
