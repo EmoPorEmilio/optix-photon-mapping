@@ -22,7 +22,9 @@ enum PhotonEventType
     EVENT_GLASS_REFRACT,     // Hit glass, refracted through
     EVENT_MISS,              // Ray escaped scene (hit nothing)
     EVENT_MAX_DEPTH,         // Terminated due to max bounce limit
-    EVENT_HIT_LIGHT          // Hit light source geometry
+    EVENT_HIT_LIGHT,         // Hit light source geometry
+    EVENT_VOLUME_SCATTER,    // Scattered in participating media (fog)
+    EVENT_VOLUME_ABSORBED    // Absorbed in participating media (fog)
 };
 
 enum TrajectoryMaterialType
@@ -30,7 +32,8 @@ enum TrajectoryMaterialType
     TRAJ_MAT_NONE = -1,
     TRAJ_MAT_DIFFUSE = 0,
     TRAJ_MAT_SPECULAR = 1,
-    TRAJ_MAT_TRANSMISSIVE = 2
+    TRAJ_MAT_TRANSMISSIVE = 2,
+    TRAJ_MAT_VOLUME = 3      // Participating media (fog)
 };
 
 struct PhotonEvent
@@ -107,6 +110,8 @@ inline const char* getEventTypeName(int type)
         case EVENT_MISS:             return "MISS";
         case EVENT_MAX_DEPTH:        return "MAX_DEPTH";
         case EVENT_HIT_LIGHT:        return "HIT_LIGHT";
+        case EVENT_VOLUME_SCATTER:   return "VOLUME_SCATTER";
+        case EVENT_VOLUME_ABSORBED:  return "VOLUME_ABSORBED";
         default:                     return "UNKNOWN";
     }
 }
@@ -119,6 +124,7 @@ inline const char* getMaterialTypeName(int type)
         case TRAJ_MAT_DIFFUSE:      return "DIFFUSE";
         case TRAJ_MAT_SPECULAR:     return "SPECULAR";
         case TRAJ_MAT_TRANSMISSIVE: return "TRANSMISSIVE";
+        case TRAJ_MAT_VOLUME:       return "VOLUME";
         default:                    return "UNKNOWN";
     }
 }

@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell -ExecutionPolicy Bypass -File scripts/compile_solution.ps1:*)",
+      "Bash(powershell -ExecutionPolicy Bypass -File scriptscompile_solution.ps1:*)",
+      "Bash(powershell -ExecutionPolicy Bypass -File \".\\scripts\\compile_solution.ps1\")",
+      "Bash(dir \"C:\\ProgramData\\NVIDIA Corporation\\OptiX SDK 9.0.0\\include\" /s /b)",
+      "Bash(findstr:*)",
+      "Bash(.binDebugOptixProgressivePhotonMap.exe)",
+      "Bash(./bin/Debug/OptixProgressivePhotonMap.exe:*)",
+      "WebFetch(domain:graphics.stanford.edu)",
+      "Bash(wc:*)",
+      "WebSearch",
+      "Bash(powershell -ExecutionPolicy Bypass -File \"C:\\\\Users\\\\emili\\\\Desktop\\\\proyectos\\\\optix-photon-mapping\\\\scripts\\\\compile_solution.ps1\")",
+      "Bash(cmd /c \"bin\\\\Debug\\\\OptixProgressivePhotonMap.exe\")",
+      "Bash(powershell -Command \"Set-Location ''C:\\\\Users\\\\emili\\\\Desktop\\\\proyectos\\\\optix-photon-mapping''; .\\\\bin\\\\Debug\\\\OptixProgressivePhotonMap.exe\")",
+      "Bash(powershell -Command \"Get-ChildItem ''C:\\\\Users\\\\emili\\\\Desktop\\\\proyectos\\\\optix-photon-mapping\\\\bin\\\\Debug\\\\*.exe'' | Select-Object Name, LastWriteTime\")",
+      "Bash(powershell -Command \"Set-Location ''C:\\\\Users\\\\emili\\\\Desktop\\\\proyectos\\\\optix-photon-mapping''; git checkout HEAD -- src/core/ src/cuda/ src/rendering/ src/optix/\")",
+      "Bash(powershell -Command \"Set-Location ''C:\\\\Users\\\\emili\\\\Desktop\\\\proyectos\\\\optix-photon-mapping''; git status --short | Select-Object -First 30\")",
+      "Bash(powershell -Command \"Set-Location ''C:\\\\Users\\\\emili\\\\Desktop\\\\proyectos\\\\optix-photon-mapping''; git diff OptixPhotonMappingRayTracing.vcxproj\")",
+      "Bash(powershell -Command \"Set-Location ''C:\\\\Users\\\\emili\\\\Desktop\\\\proyectos\\\\optix-photon-mapping''; git checkout HEAD -- OptixPhotonMappingRayTracing.vcxproj\")",
+      "Bash(powershell -Command \"Set-Location ''C:\\\\Users\\\\emili\\\\Desktop\\\\proyectos\\\\optix-photon-mapping''; git checkout HEAD -- scripts/compile_solution.ps1\")",
+      "Bash(powershell -Command \"Set-Location ''C:\\\\Users\\\\emili\\\\Desktop\\\\proyectos\\\\optix-photon-mapping''; git status --short\")",
+      "Bash(powershell -Command:*)",
+      "Bash(cmd /c \"bin\\\\Debug\\\\OptixPhotonMappingRayTracing.exe\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

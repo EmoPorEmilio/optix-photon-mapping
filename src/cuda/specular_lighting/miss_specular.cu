@@ -10,5 +10,6 @@ extern "C" __global__ void __miss__specular()
     optixSetPayload_0(__float_as_uint(0.0f));
     optixSetPayload_1(__float_as_uint(0.0f));
     optixSetPayload_2(__float_as_uint(0.0f));
+    optixSetPayload_4(__float_as_uint(1e16f));  // Very large distance - no fog for background
 }
 

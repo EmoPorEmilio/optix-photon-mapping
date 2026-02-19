@@ -7,10 +7,40 @@
 extern "C" __constant__ PhotonLaunchParams params;
 #endif
 
-// Forward declaration - defined in combined file
+// Forward declaration - defined in combined file (has default for material_type)
 __device__ __forceinline__ void recordTrajectoryEvent(
     unsigned int photon_idx, int event_type, const float3 &position,
     const float3 &direction, const float3 &power, int material_type);
+
+//=============================================================================
+// Volume Scattering Helpers (Jensen's PDF §1.4, §3.3)
+//=============================================================================
+
+// Sample isotropic direction (uniform sphere)
+static __forceinline__ __device__ float3 sampleIsotropicDirection(unsigned int &rngState)
+{
+    float u1 = ph_rand(rngState);
+    float u2 = ph_rand(rngState);
+    float cos_theta = 1.0f - 2.0f * u1;
+    float sin_theta = sqrtf(fmaxf(0.0f, 1.0f - cos_theta * cos_theta));
+    float phi = 2.0f * M_PIf * u2;
+    return make_float3(sin_theta * cosf(phi), cos_theta, sin_theta * sinf(phi));
+}
+
+// Store volume photon at scattering event in participating media
+static __forceinline__ __device__ void storeVolumePhoton(
+    const float3 &position, const float3 &incident_dir, const float3 &power)
+{
+    if (!params.volume_photons_out)
+        return;
+    unsigned int idx = atomicAdd((unsigned int *)params.volume_photon_counter, 1u);
+    if (idx < params.num_photons)
+    {
+        params.volume_photons_out[idx].position = position;
+        params.volume_photons_out[idx].power = power;
+        params.volume_photons_out[idx].direction = normalize(incident_dir);
+    }
+}
 
 //=============================================================================
 // Photon Emission Raygen Program
@@ -58,8 +88,35 @@ extern "C" __global__ void __raygen__photon_emitter()
     unsigned int insideFlag = 0u;
     unsigned int prevWasSpecular = 0u;
 
+    // Local RNG for volume scattering (separate from closest-hit RNG)
+    unsigned int volumeRngState = photon_idx * 1234567u + 9876543u;
+
     for (;;)
     {
+        //=====================================================================
+        // Volume Scattering Check (Jensen's PDF §1.4)
+        // Sample free path BEFORE surface trace, then compare with hit distance
+        //=====================================================================
+        float volume_scatter_dist = 1e16f;  // No scatter by default
+        bool will_scatter_in_volume = false;
+
+        if (params.enable_volume_scattering && params.volume.sigma_t > 0.0f)
+        {
+            // Check if ray origin is in volume region
+            if (params.volume.contains(origin))
+            {
+                // Sample free path distance: t = -ln(ξ) / σ_t
+                float xi_free = ph_rand(volumeRngState);
+                volume_scatter_dist = -logf(fmaxf(xi_free, 1e-8f)) / params.volume.sigma_t;
+                will_scatter_in_volume = true;
+            }
+        }
+
+        // Save state before trace (needed for volume scatter override)
+        float3 origin_before = origin;
+        float3 direction_before = direction;
+        float3 throughput_before = throughput;
+
         // Pack state into payload 9
         unsigned int packedState = (prevWasSpecular << 31) | (insideFlag << 30) | (depth & 0x3fffffffu);
 
@@ -109,6 +166,60 @@ extern "C" __global__ void __raygen__photon_emitter()
         prevWasSpecular = (packedState >> 31) & 0x1u;
 
         unsigned int cont = p11;
+
+        //=====================================================================
+        // Volume Scattering Override (Jensen's PDF §1.4, §3.3)
+        // If scatter distance < surface hit distance, scatter in volume
+        //=====================================================================
+        if (will_scatter_in_volume)
+        {
+            // Compute surface hit distance from origin change
+            float3 segment_vec = origin - origin_before;
+            float surface_hit_dist = length(segment_vec);
+
+            // If volume scatter happens BEFORE surface hit
+            if (volume_scatter_dist < surface_hit_dist)
+            {
+                // Compute scatter position
+                float3 scatter_pos = origin_before + volume_scatter_dist * direction_before;
+
+                // Verify scatter point is still in volume
+                if (params.volume.contains(scatter_pos))
+                {
+                    // Russian Roulette for scatter vs absorb (albedo = σ_s / σ_t)
+                    float albedo = params.volume.albedo();
+                    float xi_rr = ph_rand(volumeRngState);
+
+                    if (xi_rr < albedo)
+                    {
+                        // SCATTER: Store volume photon and continue
+                        storeVolumePhoton(scatter_pos, direction_before, throughput_before);
+
+                        // Record trajectory event
+                        recordTrajectoryEvent(photon_idx, EVENT_VOLUME_SCATTER, scatter_pos,
+                                              direction_before, throughput_before, TRAJ_MAT_VOLUME);
+
+                        // Sample new isotropic direction
+                        float3 new_dir = sampleIsotropicDirection(volumeRngState);
+
+                        // Update state for next bounce (override closest hit result)
+                        origin = scatter_pos + new_dir * 1e-3f;  // Small offset
+                        direction = new_dir;
+                        throughput = throughput_before;  // No throughput change for volume scatter
+
+                        // Continue bouncing (don't count as depth, it's volume scatter)
+                        cont = 1u;
+                    }
+                    else
+                    {
+                        // ABSORB in volume
+                        recordTrajectoryEvent(photon_idx, EVENT_VOLUME_ABSORBED, scatter_pos,
+                                              direction_before, throughput_before, TRAJ_MAT_VOLUME);
+                        cont = 0u;
+                    }
+                }
+            }
+        }
 
         if (!cont)
             break;

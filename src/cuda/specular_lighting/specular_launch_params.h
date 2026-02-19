@@ -5,6 +5,7 @@
 #include "../../scene/Material.h"
 #include "../../rendering/photon/Photon.h"
 #include "../../rendering/photon/PhotonKDTreeDevice.h"
+#include "../../rendering/photon/VolumePhoton.h"
 
 struct SpecularLaunchParams
 {
@@ -51,5 +52,10 @@ struct SpecularLaunchParams
     float specular_ambient;
     float indirect_brightness;
     float caustic_brightness;
+
+    // Fog/Volume parameters
+    bool enable_fog;
+    VolumeProperties volume;
+    float3 fog_color;
 };
 

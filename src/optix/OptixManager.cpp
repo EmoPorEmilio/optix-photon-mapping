@@ -209,10 +209,27 @@ void OptixManager::launchPhotonPass(unsigned int num_photons, const QuadLight &l
         CUDA_CHECK(cudaMalloc((void **)&d_caustic_photon_counter, sizeof(unsigned int)));
     }
 
+    // Allocate volume photon buffer if volume scattering is enabled
+    if (volume_scattering_enabled)
+    {
+        if (!d_volume_photon_buffer)
+        {
+            CUDA_CHECK(cudaMalloc((void **)&d_volume_photon_buffer, num_photons * sizeof(VolumePhoton)));
+        }
+        if (!d_volume_photon_counter)
+        {
+            CUDA_CHECK(cudaMalloc((void **)&d_volume_photon_counter, sizeof(unsigned int)));
+        }
+    }
+
     // Reset counters
     unsigned int zero = 0;
     CUDA_CHECK(cudaMemcpy((void *)d_photon_counter, &zero, sizeof(unsigned int), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy((void *)d_caustic_photon_counter, &zero, sizeof(unsigned int), cudaMemcpyHostToDevice));
+    if (volume_scattering_enabled && d_volume_photon_counter)
+    {
+        CUDA_CHECK(cudaMemcpy((void *)d_volume_photon_counter, &zero, sizeof(unsigned int), cudaMemcpyHostToDevice));
+    }
 
     PhotonLaunchParams params = {};
 
@@ -257,6 +274,15 @@ void OptixManager::launchPhotonPass(unsigned int num_photons, const QuadLight &l
     params.caustic_photons_out = reinterpret_cast<Photon *>(d_caustic_photon_buffer);
     params.caustic_photon_counter = d_caustic_photon_counter;
 
+    // Volume photon map output (fog/participating media)
+    params.enable_volume_scattering = volume_scattering_enabled;
+    if (volume_scattering_enabled)
+    {
+        params.volume = volume_properties;
+        params.volume_photons_out = reinterpret_cast<VolumePhoton *>(d_volume_photon_buffer);
+        params.volume_photon_counter = d_volume_photon_counter;
+    }
+
     CUdeviceptr d_params;
     CUDA_CHECK(cudaMalloc((void **)&d_params, sizeof(PhotonLaunchParams)));
     CUDA_CHECK(cudaMemcpy((void *)d_params, &params, sizeof(PhotonLaunchParams), cudaMemcpyHostToDevice));
@@ -280,8 +306,19 @@ void OptixManager::launchPhotonPass(unsigned int num_photons, const QuadLight &l
 
     CUDA_CHECK(cudaFree((void *)d_params));
 
+    // Report volume photon count if enabled
+    unsigned int volume_count = 0;
+    if (volume_scattering_enabled && d_volume_photon_counter)
+    {
+        CUDA_CHECK(cudaMemcpy(&volume_count, (void *)d_volume_photon_counter, sizeof(unsigned int), cudaMemcpyDeviceToHost));
+        if (volume_count > num_photons) volume_count = num_photons;
+    }
+
     std::cout << "Launched " << num_photons << " photons, stored " << out_count << " global + "
-              << out_caustic_count << " caustic hits" << std::endl;
+              << out_caustic_count << " caustic";
+    if (volume_scattering_enabled)
+        std::cout << " + " << volume_count << " volume";
+    std::cout << " hits" << std::endl;
 }
 
 void OptixManager::launchPhotonPassWithTrajectories(unsigned int num_photons, const QuadLight &light,
@@ -420,6 +457,14 @@ void OptixManager::cleanup()
         CUDA_CHECK(cudaFree(reinterpret_cast<void *>(d_photon_buffer)));
     if (d_photon_counter)
         CUDA_CHECK(cudaFree(reinterpret_cast<void *>(d_photon_counter)));
+    if (d_caustic_photon_buffer)
+        CUDA_CHECK(cudaFree(reinterpret_cast<void *>(d_caustic_photon_buffer)));
+    if (d_caustic_photon_counter)
+        CUDA_CHECK(cudaFree(reinterpret_cast<void *>(d_caustic_photon_counter)));
+    if (d_volume_photon_buffer)
+        CUDA_CHECK(cudaFree(reinterpret_cast<void *>(d_volume_photon_buffer)));
+    if (d_volume_photon_counter)
+        CUDA_CHECK(cudaFree(reinterpret_cast<void *>(d_volume_photon_counter)));
     if (d_trajectory_buffer)
         CUDA_CHECK(cudaFree(reinterpret_cast<void *>(d_trajectory_buffer)));
     if (photon_module)
@@ -621,7 +666,7 @@ bool OptixManager::createDirectLightingPipeline()
 
 void OptixManager::launchDirectLighting(unsigned int width, unsigned int height, const Camera &camera,
                                         float ambient, float shadow_ambient, float intensity, float attenuation,
-                                        float4 *d_output)
+                                        float4 *d_output, bool skip_fog)
 {
     if (!direct_pipeline)
     {
@@ -685,6 +730,21 @@ void OptixManager::launchDirectLighting(unsigned int width, unsigned int height,
     params.shadow_ambient = shadow_ambient;
     params.intensity_multiplier = intensity;
     params.attenuation_factor = attenuation;
+
+    // Fog/Volume parameters (Jensen's PDF §1.4, §3.3)
+    params.enable_fog = volume_scattering_enabled && !skip_fog;
+    params.volume = volume_properties;
+    params.volume_photons = reinterpret_cast<VolumePhoton*>(d_volume_photon_buffer);
+    // Get volume photon count from device
+    unsigned int vol_count = 0;
+    if (volume_scattering_enabled && d_volume_photon_counter)
+    {
+        CUDA_CHECK(cudaMemcpy(&vol_count, reinterpret_cast<void*>(d_volume_photon_counter),
+                              sizeof(unsigned int), cudaMemcpyDeviceToHost));
+    }
+    params.volume_photon_count = vol_count;
+    params.fog_gather_radius = 30.0f;  // Larger radius for volume gathering
+    params.fog_color = make_float3(0.15f, 0.15f, 0.18f);  // Dark grayish fog
 
     CUdeviceptr d_params;
     CUDA_CHECK(cudaMalloc((void **)&d_params, sizeof(DirectLaunchParams)));
@@ -1136,6 +1196,8 @@ void OptixManager::launchCausticLighting(unsigned int width, unsigned int height
 
     params.handle = ias_handle;
 
+    // Materials - required for BRDF in Jensen's radiance estimate (Eq. 8)
+    params.triangle_materials = reinterpret_cast<Material *>(d_triangle_materials);
     params.sphere_materials[0].type = MATERIAL_TRANSMISSIVE;
     params.sphere_materials[0].albedo = make_float3(0.95f, 0.95f, 1.0f);
     params.sphere_materials[1].type = MATERIAL_SPECULAR;
@@ -1167,7 +1229,7 @@ bool OptixManager::loadSpecularModule()
     OptixPipelineCompileOptions specular_pipeline_options = {};
     specular_pipeline_options.usesMotionBlur = false;
     specular_pipeline_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_ANY;
-    specular_pipeline_options.numPayloadValues = 4;
+    specular_pipeline_options.numPayloadValues = 5;  // RGB + depth + hit_distance (for fog)
     specular_pipeline_options.numAttributeValues = 3;
     specular_pipeline_options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
     specular_pipeline_options.pipelineLaunchParamsVariableName = "params";
@@ -1397,6 +1459,11 @@ void OptixManager::launchSpecularLighting(unsigned int width, unsigned int heigh
     params.specular_ambient = spec_params.specular_ambient;
     params.indirect_brightness = spec_params.indirect_brightness;
     params.caustic_brightness = spec_params.caustic_brightness;
+
+    // Fog/Volume parameters (same as direct lighting)
+    params.enable_fog = volume_scattering_enabled && !spec_params.skip_fog;
+    params.volume = volume_properties;
+    params.fog_color = make_float3(0.15f, 0.15f, 0.18f);  // Dark grayish fog
 
     CUdeviceptr d_params;
     CUDA_CHECK(cudaMalloc((void **)&d_params, sizeof(SpecularLaunchParams)));

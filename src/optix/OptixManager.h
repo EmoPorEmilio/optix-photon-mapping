@@ -21,6 +21,7 @@
 #include "../scene/Scene.h"
 #include "../lighting/QuadLight.h"
 #include "../rendering/photon/Photon.h"
+#include "../rendering/photon/VolumePhoton.h"
 #include "../rendering/photon/PhotonKDTreeDevice.h"
 #include "../rendering/photon/PhotonTrajectory.h"
 
@@ -82,6 +83,12 @@ private:
     // Trajectory recording buffer
     CUdeviceptr d_trajectory_buffer = 0;
     unsigned int trajectory_buffer_size = 0;
+
+    // Volume photon map buffers (fog/participating media)
+    CUdeviceptr d_volume_photon_buffer = 0;
+    CUdeviceptr d_volume_photon_counter = 0;
+    bool volume_scattering_enabled = false;
+    VolumeProperties volume_properties;
 
     // Direct lighting pipeline
     OptixModule direct_module = 0;
@@ -153,6 +160,12 @@ public:
 
     void setQuadLightStartIndex(unsigned int index) { quadLightStartIndex = index; }
 
+    // Volume scattering (fog/participating media)
+    void enableVolumeScattering(bool enable) { volume_scattering_enabled = enable; }
+    void setVolumeProperties(const VolumeProperties& props) { volume_properties = props; }
+    const VolumeProperties& getVolumeProperties() const { return volume_properties; }
+    CUdeviceptr getVolumePhotonBuffer() const { return d_volume_photon_buffer; }
+
     bool createPhotonPipeline();
     
     // Standard photon pass (no trajectory recording)
@@ -172,7 +185,7 @@ public:
     bool createDirectLightingPipeline();
     void launchDirectLighting(unsigned int width, unsigned int height, const Camera &camera,
                               float ambient, float shadow_ambient, float intensity, float attenuation,
-                              float4 *d_output);
+                              float4 *d_output, bool skip_fog = false);
 
     // Indirect lighting pipeline (color bleeding)
     bool createIndirectLightingPipeline();
@@ -203,6 +216,7 @@ public:
         float specular_ambient = 0.15f;
         float indirect_brightness = 100000.0f;
         float caustic_brightness = 200000.0f;
+        bool skip_fog = false;  // Skip fog for combined renderer
     };
     void launchSpecularLighting(unsigned int width, unsigned int height, const Camera &camera,
                                 const Photon *d_global_map, unsigned int global_count,

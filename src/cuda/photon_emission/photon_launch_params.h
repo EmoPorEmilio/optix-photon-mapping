@@ -4,6 +4,7 @@
 #include <sutil/vec_math.h>
 #include "../../lighting/QuadLight.h"
 #include "../../rendering/photon/Photon.h"
+#include "../../rendering/photon/VolumePhoton.h"
 #include "../../rendering/photon/PhotonTrajectory.h"
 #include "../../scene/Material.h"
 
@@ -53,8 +54,18 @@ struct PhotonLaunchParams
     bool record_trajectories;           // Enable full trajectory recording
     PhotonTrajectory* trajectories_out; // Output buffer (one per photon)
 
-    __host__ __device__ PhotonLaunchParams() 
-        : record_trajectories(false), trajectories_out(nullptr) {}
+    //=========================================================================
+    // Volume/Participating Media (Jensen's PDF §1.4, §3.3)
+    //=========================================================================
+    bool enable_volume_scattering;      // Enable fog/participating media
+    VolumeProperties volume;            // Volume extinction/scattering coefficients
+    VolumePhoton* volume_photons_out;   // Output buffer for volume photons
+    CUdeviceptr volume_photon_counter;  // Atomic counter for volume photons
+
+    __host__ __device__ PhotonLaunchParams()
+        : record_trajectories(false), trajectories_out(nullptr),
+          enable_volume_scattering(false), volume_photons_out(nullptr),
+          volume_photon_counter(0) {}
 };
 
 

@@ -9,7 +9,8 @@ enum MaterialType
 {
     MATERIAL_DIFFUSE = 0,
     MATERIAL_SPECULAR = 1,
-    MATERIAL_TRANSMISSIVE = 2
+    MATERIAL_TRANSMISSIVE = 2,
+    MATERIAL_GLASS = 2  // Alias for transmissive
 };
 
 struct Material

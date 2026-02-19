@@ -50,6 +50,9 @@ public:
     // Access to all objects for debug/visualization (e.g., photon map rendering).
     const std::vector<std::unique_ptr<Object>>& getObjects() const { return objects; }
 
+    // Get count of objects
+    size_t getObjectCount() const { return objects.size(); }
+
 private:
     
     mutable unsigned int quadLightStartIndex = 0;

@@ -3,6 +3,7 @@
 #include <optix.h>
 #include <sutil/vec_math.h>
 #include "../../scene/Material.h"
+#include "../../rendering/photon/VolumePhoton.h"
 
 // Light data for direct illumination
 struct DirectLightData
@@ -50,6 +51,18 @@ struct DirectLaunchParams
     float intensity_multiplier; // Direct lighting intensity
     float attenuation_factor;   // Light falloff factor
 
-    __host__ __device__ DirectLaunchParams() {}
+    //=========================================================================
+    // Volume/Fog Parameters (Jensen's PDF §1.4, §3.3)
+    //=========================================================================
+    bool enable_fog;                    // Enable fog rendering
+    VolumeProperties volume;            // Fog volume properties
+    VolumePhoton* volume_photons;       // Volume photon map (optional, for proper scattering)
+    unsigned int volume_photon_count;   // Number of volume photons
+    float fog_gather_radius;            // Radius for volume photon gathering
+    float3 fog_color;                   // Base fog color (for simple atmospheric fog)
+
+    __host__ __device__ DirectLaunchParams()
+        : enable_fog(false), volume_photons(nullptr), volume_photon_count(0),
+          fog_gather_radius(20.0f), fog_color(make_float3(0.8f, 0.85f, 0.9f)) {}
 };
 

@@ -178,6 +178,78 @@ void CombinedRenderer::setWeights(float direct, float indirect, float caustic, f
     specularWeight = specular;
 }
 
+// CPU implementation of fog for combined rendering (Jensen's algorithm)
+float3 CombinedRenderer::applyFogToPixel(float3 color, float3 rayOrigin, float3 rayDir, float hitDistance)
+{
+    if (!fogEnabled || hitDistance <= 0.0f || hitDistance > 1e10f)
+        return color;
+
+    // Check if ray passes through volume bounds
+    float3 invDir = make_float3(
+        rayDir.x != 0.0f ? 1.0f / rayDir.x : 1e16f,
+        rayDir.y != 0.0f ? 1.0f / rayDir.y : 1e16f,
+        rayDir.z != 0.0f ? 1.0f / rayDir.z : 1e16f);
+
+    float3 t0 = make_float3(
+        (volumeProps.bounds_min.x - rayOrigin.x) * invDir.x,
+        (volumeProps.bounds_min.y - rayOrigin.y) * invDir.y,
+        (volumeProps.bounds_min.z - rayOrigin.z) * invDir.z);
+    float3 t1 = make_float3(
+        (volumeProps.bounds_max.x - rayOrigin.x) * invDir.x,
+        (volumeProps.bounds_max.y - rayOrigin.y) * invDir.y,
+        (volumeProps.bounds_max.z - rayOrigin.z) * invDir.z);
+
+    float tmin_x = std::min(t0.x, t1.x);
+    float tmax_x = std::max(t0.x, t1.x);
+    float tmin_y = std::min(t0.y, t1.y);
+    float tmax_y = std::max(t0.y, t1.y);
+    float tmin_z = std::min(t0.z, t1.z);
+    float tmax_z = std::max(t0.z, t1.z);
+
+    float t_near = std::max({tmin_x, tmin_y, tmin_z, 0.0f});
+    float t_far = std::min({tmax_x, tmax_y, tmax_z, hitDistance});
+
+    if (t_far <= t_near)
+        return color;
+
+    // Ray march with density-weighted extinction
+    const float step_size = 10.0f;
+    float optical_depth = 0.0f;
+    float3 in_scatter = make_float3(0.0f, 0.0f, 0.0f);
+    float t = std::max(t_near, 0.001f);
+
+    while (t < t_far)
+    {
+        float3 sample_pos = make_float3(
+            rayOrigin.x + t * rayDir.x,
+            rayOrigin.y + t * rayDir.y,
+            rayOrigin.z + t * rayDir.z);
+
+        // Get local density using height-based exponential falloff
+        float density = volumeProps.densityAt(sample_pos);
+
+        if (density > 0.0f)
+        {
+            float local_sigma_t = volumeProps.sigma_t * density;
+            optical_depth += local_sigma_t * step_size;
+
+            float transmittance_so_far = std::exp(-optical_depth);
+            float scatter_contrib = density * (1.0f - std::exp(-local_sigma_t * step_size)) * transmittance_so_far;
+            in_scatter.x += fogColor.x * scatter_contrib;
+            in_scatter.y += fogColor.y * scatter_contrib;
+            in_scatter.z += fogColor.z * scatter_contrib;
+        }
+
+        t += step_size;
+    }
+
+    float transmittance = std::exp(-optical_depth);
+    return make_float3(
+        color.x * transmittance + in_scatter.x,
+        color.y * transmittance + in_scatter.y,
+        color.z * transmittance + in_scatter.z);
+}
+
 void CombinedRenderer::combineBuffers(unsigned int width, unsigned int height)
 {
     // Copy all buffers to CPU and combine
@@ -191,44 +263,75 @@ void CombinedRenderer::combineBuffers(unsigned int width, unsigned int height)
     cudaMemcpy(h_caustic.data(), d_causticBuffer, width * height * sizeof(float4), cudaMemcpyDeviceToHost);
     cudaMemcpy(h_specular.data(), d_specularBuffer, width * height * sizeof(float4), cudaMemcpyDeviceToHost);
 
+    // Get camera parameters for fog ray computation
+    float3 eye = camera->getPosition();
+    float3 U = camera->getU();
+    float3 V = camera->getV();
+    float3 W = camera->getW();
+
     // Combine with weights - use MAX blending for specular (sphere areas)
-    for (unsigned int i = 0; i < width * height; i++)
+    for (unsigned int y = 0; y < height; y++)
     {
-        // Check if this pixel has specular content (sphere area)
-        float specLuminance = h_specular[i].x + h_specular[i].y + h_specular[i].z;
-        
-        float r, g, b;
-        
-        if (specLuminance > 0.01f)
+        for (unsigned int x = 0; x < width; x++)
         {
-            // Sphere pixel: use specular directly (full brightness) 
-            // The specular pass already has the full scene reflected/refracted
-            r = h_specular[i].x;
-            g = h_specular[i].y;
-            b = h_specular[i].z;
+            unsigned int i = y * width + x;
+
+            // Check if this pixel has specular content (sphere area)
+            float specLuminance = h_specular[i].x + h_specular[i].y + h_specular[i].z;
+
+            float r, g, b;
+            float hitDistance;
+
+            if (specLuminance > 0.01f)
+            {
+                // Sphere pixel: use specular directly
+                r = h_specular[i].x;
+                g = h_specular[i].y;
+                b = h_specular[i].z;
+                hitDistance = h_specular[i].w;  // Hit distance stored in w
+            }
+            else
+            {
+                // Non-sphere pixel: combine direct + indirect + caustic with weights
+                r = h_direct[i].x * directWeight + h_indirect[i].x * indirectWeight +
+                    h_caustic[i].x * causticWeight;
+                g = h_direct[i].y * directWeight + h_indirect[i].y * indirectWeight +
+                    h_caustic[i].y * causticWeight;
+                b = h_direct[i].z * directWeight + h_indirect[i].z * indirectWeight +
+                    h_caustic[i].z * causticWeight;
+                hitDistance = h_direct[i].w;  // Hit distance from direct pass
+            }
+
+            // Apply fog (Jensen's algorithm - once to final combined result)
+            if (fogEnabled)
+            {
+                // Compute ray direction for this pixel
+                float u = (2.0f * (float(x) + 0.5f) / float(width)) - 1.0f;
+                float v = (2.0f * (float(y) + 0.5f) / float(height)) - 1.0f;
+                float3 rayDir = normalize(make_float3(
+                    W.x + u * U.x + v * V.x,
+                    W.y + u * U.y + v * V.y,
+                    W.z + u * U.z + v * V.z));
+
+                float3 color = make_float3(r, g, b);
+                color = applyFogToPixel(color, eye, rayDir, hitDistance);
+                r = color.x;
+                g = color.y;
+                b = color.z;
+            }
+
+            // Clamp to [0, 1] in linear space
+            r = std::min(1.0f, std::max(0.0f, r));
+            g = std::min(1.0f, std::max(0.0f, g));
+            b = std::min(1.0f, std::max(0.0f, b));
+
+            // Apply gamma correction (sRGB) at final output stage
+            r = std::pow(r, Constants::Render::INV_GAMMA);
+            g = std::pow(g, Constants::Render::INV_GAMMA);
+            b = std::pow(b, Constants::Render::INV_GAMMA);
+
+            h_combinedBuffer[i] = make_float4(r, g, b, 1.0f);
         }
-        else
-        {
-            // Non-sphere pixel: combine direct + indirect + caustic with weights
-            r = h_direct[i].x * directWeight + h_indirect[i].x * indirectWeight + 
-                h_caustic[i].x * causticWeight;
-            g = h_direct[i].y * directWeight + h_indirect[i].y * indirectWeight + 
-                h_caustic[i].y * causticWeight;
-            b = h_direct[i].z * directWeight + h_indirect[i].z * indirectWeight + 
-                h_caustic[i].z * causticWeight;
-        }
-
-        // Clamp to [0, 1] in linear space
-        r = std::min(1.0f, std::max(0.0f, r));
-        g = std::min(1.0f, std::max(0.0f, g));
-        b = std::min(1.0f, std::max(0.0f, b));
-
-        // Apply gamma correction (sRGB) at final output stage
-        r = std::pow(r, Constants::Render::INV_GAMMA);
-        g = std::pow(g, Constants::Render::INV_GAMMA);
-        b = std::pow(b, Constants::Render::INV_GAMMA);
-
-        h_combinedBuffer[i] = make_float4(r, g, b, 1.0f);
     }
 }
 
@@ -241,8 +344,8 @@ void CombinedRenderer::render()
     unsigned int height = viewport.height;
     allocateBuffers(width, height);
 
-    // Run all 4 pipelines
-    optixManager->launchDirectLighting(width, height, *camera, directAmbient, directShadowAmbient, directIntensity, directAttenuation, d_directBuffer);
+    // Run all 4 pipelines (skip fog in individual passes - will apply once at end if needed)
+    optixManager->launchDirectLighting(width, height, *camera, directAmbient, directShadowAmbient, directIntensity, directAttenuation, d_directBuffer, true);
     
     if (globalPhotonCount > 0)
         optixManager->launchIndirectLighting(width, height, *camera, d_globalPhotonMap, globalPhotonCount, gatherRadius, indirectBrightness, globalKDTree.getDeviceTree(), d_indirectBuffer);
@@ -254,10 +357,13 @@ void CombinedRenderer::render()
     else
         cudaMemset(d_causticBuffer, 0, width * height * sizeof(float4));
 
+    // Use specParams with skip_fog=true for combined rendering
+    auto specParamsNoFog = specParams;
+    specParamsNoFog.skip_fog = true;
     optixManager->launchSpecularLighting(width, height, *camera,
                                          d_globalPhotonMap, globalPhotonCount, globalKDTree.getDeviceTree(),
                                          d_causticPhotonMap, causticPhotonCount, causticKDTree.getDeviceTree(),
-                                         specParams, d_specularBuffer);
+                                         specParamsNoFog, d_specularBuffer);
 
     // Combine on CPU
     combineBuffers(width, height);
@@ -288,9 +394,9 @@ void CombinedRenderer::exportToImage(const std::string& filename)
 
     std::cout << "Rendering combined image..." << std::endl;
 
-    // Run all pipelines
-    optixManager->launchDirectLighting(width, height, *camera, directAmbient, directShadowAmbient, directIntensity, directAttenuation, d_directBuffer);
-    
+    // Run all pipelines (skip fog in individual passes)
+    optixManager->launchDirectLighting(width, height, *camera, directAmbient, directShadowAmbient, directIntensity, directAttenuation, d_directBuffer, true);
+
     if (globalPhotonCount > 0)
         optixManager->launchIndirectLighting(width, height, *camera, d_globalPhotonMap, globalPhotonCount, gatherRadius, indirectBrightness, globalKDTree.getDeviceTree(), d_indirectBuffer);
     else
@@ -301,10 +407,13 @@ void CombinedRenderer::exportToImage(const std::string& filename)
     else
         cudaMemset(d_causticBuffer, 0, width * height * sizeof(float4));
 
+    // Use specParams with skip_fog=true for combined rendering
+    auto specParamsNoFog = specParams;
+    specParamsNoFog.skip_fog = true;
     optixManager->launchSpecularLighting(width, height, *camera,
                                          d_globalPhotonMap, globalPhotonCount, globalKDTree.getDeviceTree(),
                                          d_causticPhotonMap, causticPhotonCount, causticKDTree.getDeviceTree(),
-                                         specParams, d_specularBuffer);
+                                         specParamsNoFog, d_specularBuffer);
 
     // Combine
     combineBuffers(width, height);

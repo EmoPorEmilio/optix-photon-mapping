@@ -393,6 +393,77 @@ void ExporterManager::exportTrajectories(const std::vector<PhotonTrajectory>& tr
     TrajectoryExporter::exportToFile(trajectories, filename);
 }
 
+// CPU implementation of fog for combined export (Jensen's algorithm)
+float3 ExporterManager::applyFogToPixel(float3 color, float3 rayOrigin, float3 rayDir, float hitDistance)
+{
+    if (!fogEnabled || hitDistance <= 0.0f || hitDistance > 1e10f)
+        return color;
+
+    // Check if ray passes through volume bounds
+    float3 invDir = make_float3(
+        rayDir.x != 0.0f ? 1.0f / rayDir.x : 1e16f,
+        rayDir.y != 0.0f ? 1.0f / rayDir.y : 1e16f,
+        rayDir.z != 0.0f ? 1.0f / rayDir.z : 1e16f);
+
+    float3 t0 = make_float3(
+        (volumeProps.bounds_min.x - rayOrigin.x) * invDir.x,
+        (volumeProps.bounds_min.y - rayOrigin.y) * invDir.y,
+        (volumeProps.bounds_min.z - rayOrigin.z) * invDir.z);
+    float3 t1 = make_float3(
+        (volumeProps.bounds_max.x - rayOrigin.x) * invDir.x,
+        (volumeProps.bounds_max.y - rayOrigin.y) * invDir.y,
+        (volumeProps.bounds_max.z - rayOrigin.z) * invDir.z);
+
+    float tmin_x = std::min(t0.x, t1.x);
+    float tmax_x = std::max(t0.x, t1.x);
+    float tmin_y = std::min(t0.y, t1.y);
+    float tmax_y = std::max(t0.y, t1.y);
+    float tmin_z = std::min(t0.z, t1.z);
+    float tmax_z = std::max(t0.z, t1.z);
+
+    float t_near = std::max({tmin_x, tmin_y, tmin_z, 0.0f});
+    float t_far = std::min({tmax_x, tmax_y, tmax_z, hitDistance});
+
+    if (t_far <= t_near)
+        return color;
+
+    // Ray march with density-weighted extinction
+    const float step_size = 10.0f;
+    float optical_depth = 0.0f;
+    float3 in_scatter = make_float3(0.0f, 0.0f, 0.0f);
+    float t = std::max(t_near, 0.001f);
+
+    while (t < t_far)
+    {
+        float3 sample_pos = make_float3(
+            rayOrigin.x + t * rayDir.x,
+            rayOrigin.y + t * rayDir.y,
+            rayOrigin.z + t * rayDir.z);
+
+        float density = volumeProps.densityAt(sample_pos);
+
+        if (density > 0.0f)
+        {
+            float local_sigma_t = volumeProps.sigma_t * density;
+            optical_depth += local_sigma_t * step_size;
+
+            float transmittance_so_far = std::exp(-optical_depth);
+            float scatter_contrib = density * (1.0f - std::exp(-local_sigma_t * step_size)) * transmittance_so_far;
+            in_scatter.x += fogColor.x * scatter_contrib;
+            in_scatter.y += fogColor.y * scatter_contrib;
+            in_scatter.z += fogColor.z * scatter_contrib;
+        }
+
+        t += step_size;
+    }
+
+    float transmittance = std::exp(-optical_depth);
+    return make_float3(
+        color.x * transmittance + in_scatter.x,
+        color.y * transmittance + in_scatter.y,
+        color.z * transmittance + in_scatter.z);
+}
+
 void ExporterManager::exportAllRenderModes(const std::string& outputDir)
 {
     if (!initialized || !optixManager || !camera)
@@ -477,7 +548,7 @@ void ExporterManager::exportAllRenderModes(const std::string& outputDir)
         std::cout << "  Saved: " << filename << std::endl;
 
     std::cout << "Rendering combined image..." << std::endl;
-    
+
     float4 *d_direct, *d_indirect, *d_caustic, *d_specular;
     size_t bufSize = imageWidth * imageHeight * sizeof(float4);
     cudaMalloc(&d_direct, bufSize);
@@ -485,10 +556,11 @@ void ExporterManager::exportAllRenderModes(const std::string& outputDir)
     cudaMalloc(&d_caustic, bufSize);
     cudaMalloc(&d_specular, bufSize);
 
+    // Skip fog in individual passes for combined rendering (fog would double-apply)
     optixManager->launchDirectLighting(imageWidth, imageHeight, *camera,
                                        directAmbient, directShadowAmbient,
                                        directIntensity, directAttenuation,
-                                       d_direct);
+                                       d_direct, true);  // skip_fog=true
 
     if (!globalPhotons.empty())
         optixManager->launchIndirectLighting(imageWidth, imageHeight, *camera,
@@ -511,6 +583,9 @@ void ExporterManager::exportAllRenderModes(const std::string& outputDir)
     else
         cudaMemset(d_caustic, 0, bufSize);
 
+    // Use specParams with skip_fog=true for combined rendering
+    auto specParamsNoFog = specParams;
+    specParamsNoFog.skip_fog = true;
     optixManager->launchSpecularLighting(imageWidth, imageHeight, *camera,
                                          d_globalPhotonMap,
                                          static_cast<unsigned int>(globalPhotons.size()),
@@ -518,7 +593,7 @@ void ExporterManager::exportAllRenderModes(const std::string& outputDir)
                                          d_causticPhotonMap,
                                          static_cast<unsigned int>(causticPhotons.size()),
                                          causticKDTree.getDeviceTree(),
-                                         specParams, d_specular);
+                                         specParamsNoFog, d_specular);
 
     std::vector<float4> h_direct(imageWidth * imageHeight);
     std::vector<float4> h_indirect(imageWidth * imageHeight);
@@ -530,17 +605,64 @@ void ExporterManager::exportAllRenderModes(const std::string& outputDir)
     cudaMemcpy(h_caustic.data(), d_caustic, bufSize, cudaMemcpyDeviceToHost);
     cudaMemcpy(h_specular.data(), d_specular, bufSize, cudaMemcpyDeviceToHost);
 
-    for (unsigned int i = 0; i < imageWidth * imageHeight; ++i)
+    // Get camera parameters for fog ray computation
+    float3 eye = camera->getPosition();
+    float3 U = camera->getU();
+    float3 V = camera->getV();
+    float3 W = camera->getW();
+
+    // Combine with fog applied (Jensen's algorithm)
+    for (unsigned int y = 0; y < imageHeight; ++y)
     {
-        float r = h_direct[i].x + h_indirect[i].x + h_caustic[i].x + h_specular[i].x * 0.5f;
-        float g = h_direct[i].y + h_indirect[i].y + h_caustic[i].y + h_specular[i].y * 0.5f;
-        float b = h_direct[i].z + h_indirect[i].z + h_caustic[i].z + h_specular[i].z * 0.5f;
+        for (unsigned int x = 0; x < imageWidth; ++x)
+        {
+            unsigned int i = y * imageWidth + x;
 
-        r = powf(std::max(0.0f, std::min(1.0f, r)), Constants::Render::INV_GAMMA);
-        g = powf(std::max(0.0f, std::min(1.0f, g)), Constants::Render::INV_GAMMA);
-        b = powf(std::max(0.0f, std::min(1.0f, b)), Constants::Render::INV_GAMMA);
+            // Check if this pixel has specular content
+            float specLuminance = h_specular[i].x + h_specular[i].y + h_specular[i].z;
 
-        h_outputBuffer[i] = make_float4(r, g, b, 1.0f);
+            float r, g, b;
+            float hitDistance;
+
+            if (specLuminance > 0.01f)
+            {
+                // Sphere pixel: use specular
+                r = h_specular[i].x;
+                g = h_specular[i].y;
+                b = h_specular[i].z;
+                hitDistance = h_specular[i].w;
+            }
+            else
+            {
+                // Non-sphere pixel: combine direct + indirect + caustic
+                r = h_direct[i].x + h_indirect[i].x + h_caustic[i].x;
+                g = h_direct[i].y + h_indirect[i].y + h_caustic[i].y;
+                b = h_direct[i].z + h_indirect[i].z + h_caustic[i].z;
+                hitDistance = h_direct[i].w;
+            }
+
+            // Apply fog (Jensen's algorithm - once to final combined result)
+            if (fogEnabled)
+            {
+                float u = (2.0f * (float(x) + 0.5f) / float(imageWidth)) - 1.0f;
+                float v = (2.0f * (float(y) + 0.5f) / float(imageHeight)) - 1.0f;
+                float3 rayDir = normalize(make_float3(
+                    W.x + u * U.x + v * V.x,
+                    W.y + u * U.y + v * V.y,
+                    W.z + u * U.z + v * V.z));
+
+                float3 color = applyFogToPixel(make_float3(r, g, b), eye, rayDir, hitDistance);
+                r = color.x;
+                g = color.y;
+                b = color.z;
+            }
+
+            r = powf(std::max(0.0f, std::min(1.0f, r)), Constants::Render::INV_GAMMA);
+            g = powf(std::max(0.0f, std::min(1.0f, g)), Constants::Render::INV_GAMMA);
+            b = powf(std::max(0.0f, std::min(1.0f, b)), Constants::Render::INV_GAMMA);
+
+            h_outputBuffer[i] = make_float4(r, g, b, 1.0f);
+        }
     }
 
     cudaFree(d_direct);

@@ -13,6 +13,7 @@
 #include "../../ui/WindowManager.h"
 #include "../photon/Photon.h"
 #include "../photon/PhotonKDTree.h"
+#include "../photon/VolumePhoton.h"  // For VolumeProperties
 
 class CombinedRenderer
 {
@@ -66,6 +67,11 @@ private:
     // Specular params
     OptixManager::SpecularParams specParams;
 
+    // Fog parameters (Jensen's algorithm - applied once to final combined result)
+    bool fogEnabled = false;
+    VolumeProperties volumeProps;
+    float3 fogColor = make_float3(0.15f, 0.15f, 0.18f);
+
     bool initialized = false;
 
     void setupOpenGL();
@@ -73,6 +79,9 @@ private:
     void createShader();
     void allocateBuffers(unsigned int width, unsigned int height);
     void combineBuffers(unsigned int width, unsigned int height);
+
+    // Fog helpers (Jensen's algorithm - CPU implementation)
+    float3 applyFogToPixel(float3 color, float3 rayOrigin, float3 rayDir, float hitDistance);
 
 public:
     CombinedRenderer(GLFWwindow* win, const ViewportRect& vp);
@@ -93,6 +102,11 @@ public:
         directAmbient = amb; directShadowAmbient = shadowAmb; directIntensity = inten; directAttenuation = atten;
     }
     void setSpecularParams(const OptixManager::SpecularParams& params) { specParams = params; }
+
+    // Fog settings (Jensen's algorithm - fog applied once to final combined result)
+    void setFogEnabled(bool enabled) { fogEnabled = enabled; }
+    void setVolumeProperties(const VolumeProperties& props) { volumeProps = props; }
+    void setFogColor(const float3& color) { fogColor = color; }
 
     void render();
     void exportToImage(const std::string& filename);

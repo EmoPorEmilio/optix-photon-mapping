@@ -13,6 +13,7 @@ extern "C" __global__ void __miss__direct()
     optixSetPayload_0(__float_as_uint(bg.x));
     optixSetPayload_1(__float_as_uint(bg.y));
     optixSetPayload_2(__float_as_uint(bg.z));
+    optixSetPayload_3(__float_as_uint(1e16f));  // Very large distance - no fog for background
 }
 
 // Shadow ray miss - no occlusion (light is visible)

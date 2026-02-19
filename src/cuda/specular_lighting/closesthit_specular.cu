@@ -84,6 +84,7 @@ extern "C" __global__ void __closesthit__specular_triangle()
         optixSetPayload_0(__float_as_uint(1.0f));
         optixSetPayload_1(__float_as_uint(1.0f));
         optixSetPayload_2(__float_as_uint(1.0f));
+        optixSetPayload_4(__float_as_uint(optixGetRayTmax()));  // Hit distance for fog
         return;
     }
     
@@ -112,31 +113,34 @@ extern "C" __global__ void __closesthit__specular_triangle()
             optixSetPayload_0(__float_as_uint(0.0f));
             optixSetPayload_1(__float_as_uint(0.0f));
             optixSetPayload_2(__float_as_uint(0.0f));
+            optixSetPayload_4(__float_as_uint(t_hit));
             return;
         }
-        
+
         // Perfect mirror reflection
         float3 reflect_dir = reflect(ray_dir, normal);
         float3 reflect_origin = hit_point + normal * 0.001f;
-        
+
         float3 color = traceSecondaryRay(reflect_origin, reflect_dir, depth);
         color *= params.mirror_reflectivity;
-        
+
         // Apply slight tint from albedo
         color *= albedo;
-        
+
         optixSetPayload_0(__float_as_uint(color.x));
         optixSetPayload_1(__float_as_uint(color.y));
         optixSetPayload_2(__float_as_uint(color.z));
+        optixSetPayload_4(__float_as_uint(t_hit));
         return;
     }
-    
+
     // DIFFUSE triangles: primary rays = black (only show spheres/mirrors)
     if (depth == 0)
     {
         optixSetPayload_0(__float_as_uint(0.0f));
         optixSetPayload_1(__float_as_uint(0.0f));
         optixSetPayload_2(__float_as_uint(0.0f));
+        optixSetPayload_4(__float_as_uint(t_hit));
         return;
     }
     
@@ -173,10 +177,11 @@ extern "C" __global__ void __closesthit__specular_triangle()
     color.x = fminf(1.0f, color.x);
     color.y = fminf(1.0f, color.y);
     color.z = fminf(1.0f, color.z);
-    
+
     optixSetPayload_0(__float_as_uint(color.x));
     optixSetPayload_1(__float_as_uint(color.y));
     optixSetPayload_2(__float_as_uint(color.z));
+    optixSetPayload_4(__float_as_uint(t_hit));
 }
 
 // Spheres show reflection/refraction with proper Fresnel handling (Jensen's algorithm)
@@ -185,19 +190,20 @@ extern "C" __global__ void __closesthit__specular_sphere()
     const unsigned int prim_idx = optixGetPrimitiveIndex();
     unsigned int depth = optixGetPayload_3();
     
+    const float3 ray_origin = optixGetWorldRayOrigin();
+    const float3 ray_dir = optixGetWorldRayDirection();
+    const float t_hit = optixGetRayTmax();
+    const float3 hit_point = ray_origin + t_hit * ray_dir;
+
     // Max recursion depth - configurable
     if (depth >= params.max_recursion_depth)
     {
         optixSetPayload_0(__float_as_uint(0.0f));
         optixSetPayload_1(__float_as_uint(0.0f));
         optixSetPayload_2(__float_as_uint(0.0f));
+        optixSetPayload_4(__float_as_uint(t_hit));
         return;
     }
-    
-    const float3 ray_origin = optixGetWorldRayOrigin();
-    const float3 ray_dir = optixGetWorldRayDirection();
-    const float t_hit = optixGetRayTmax();
-    const float3 hit_point = ray_origin + t_hit * ray_dir;
     
     // Get normal from intersection attributes
     float3 normal = make_float3(
@@ -276,11 +282,13 @@ extern "C" __global__ void __closesthit__specular_sphere()
         optixSetPayload_0(__float_as_uint(0.0f));
         optixSetPayload_1(__float_as_uint(0.0f));
         optixSetPayload_2(__float_as_uint(0.0f));
+        optixSetPayload_4(__float_as_uint(t_hit));
         return;
     }
-    
+
     optixSetPayload_0(__float_as_uint(color.x));
     optixSetPayload_1(__float_as_uint(color.y));
     optixSetPayload_2(__float_as_uint(color.z));
+    optixSetPayload_4(__float_as_uint(t_hit));
 }
 

@@ -2,6 +2,7 @@
 #include "PerformanceManager.h"
 #include "../lighting/QuadLight.h"
 #include "../rendering/photon/PhotonMapRenderer.h"
+#include "../rendering/photon/VolumePhoton.h"
 #include "../rendering/raster/RasterRenderer.h"
 #include "../scene/Material.h"
 #include "../scene/ObjLoader.h"
@@ -579,6 +580,16 @@ bool Application::initialize()
     sp.indirect_brightness = pmc.specular.indirect_brightness;
     sp.caustic_brightness = pmc.specular.caustic_brightness;
     combinedRenderer->setSpecularParams(sp);
+
+    // Set fog parameters for combined renderer (Jensen's algorithm - fog applied once)
+    combinedRenderer->setFogEnabled(true);
+    VolumeProperties fogProps;
+    fogProps.sigma_t = 0.005f;
+    fogProps.sigma_s = 0.004f;
+    fogProps.bounds_min = make_float3(0.0f, 0.0f, 0.0f);
+    fogProps.bounds_max = make_float3(556.0f, 548.0f, 559.0f);
+    combinedRenderer->setVolumeProperties(fogProps);
+    combinedRenderer->setFogColor(make_float3(0.15f, 0.15f, 0.18f));
   }
 
   float rightAspect = static_cast<float>(glManager.getRightViewport().width) /
@@ -700,6 +711,17 @@ void Application::run()
         // Launch OptiX photon pass on GPU (returns both global and caustic photons)
         // Optionally record full trajectories for debugging/visualization
         std::vector<PhotonTrajectory> trajectories;
+
+        // Enable fog/participating media (Jensen's PDF §1.4, §3.3)
+        // Ground fog: exponential density falloff with height (denser near floor)
+        optixManager.enableVolumeScattering(true);
+        VolumeProperties fogProps;
+        fogProps.sigma_t = 0.005f;  // Light fog extinction
+        fogProps.sigma_s = 0.004f;  // Scattering coefficient (albedo ~0.8)
+        fogProps.bounds_min = make_float3(0.0f, 0.0f, 0.0f);
+        fogProps.bounds_max = make_float3(556.0f, 548.0f, 559.0f);  // Full box - density handles height falloff
+        optixManager.setVolumeProperties(fogProps);
+        std::cout << "Fog enabled: σ_t=" << fogProps.sigma_t << ", σ_s=" << fogProps.sigma_s << std::endl;
 
         PERF_START("PhotonTracing::launchPhotonPass");
         if (recordTrajectories)

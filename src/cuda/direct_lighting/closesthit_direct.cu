@@ -53,6 +53,7 @@ extern "C" __global__ void __closesthit__direct_triangle()
         optixSetPayload_0(__float_as_uint(emission.x));
         optixSetPayload_1(__float_as_uint(emission.y));
         optixSetPayload_2(__float_as_uint(emission.z));
+        optixSetPayload_3(__float_as_uint(optixGetRayTmax()));  // Hit distance for fog
         return;
     }
 

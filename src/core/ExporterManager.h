@@ -10,6 +10,7 @@
 #include "../rendering/photon/PhotonTrajectory.h"
 #include "../rendering/photon/TrajectoryExporter.h"
 #include "../rendering/photon/PhotonKDTree.h"
+#include "../rendering/photon/VolumePhoton.h"  // For VolumeProperties
 #include "../scene/Camera.h"
 #include "Constants.h"
 #include "ConfigLoader.h"
@@ -94,7 +95,12 @@ private:
     bool initialized = false;
     bool buffersAllocated = false;
     bool photonsUploaded = false;
-    
+
+    // Fog parameters (Jensen's algorithm)
+    bool fogEnabled = true;
+    VolumeProperties volumeProps;
+    float3 fogColor = make_float3(0.15f, 0.15f, 0.18f);
+
     // Configuration for metrics export
     PhotonMappingConfig currentConfig;
     bool hasConfig = false;
@@ -110,4 +116,7 @@ private:
     void renderPhotonsToBuffer(const std::vector<Photon>& photons, std::vector<unsigned char>& rgbBuffer);
     std::string generateConfigSummary() const;
     std::string getPerformanceMetricsPath(const std::string& baseDir);
+
+    // Fog helper (Jensen's algorithm)
+    float3 applyFogToPixel(float3 color, float3 rayOrigin, float3 rayDir, float hitDistance);
 };

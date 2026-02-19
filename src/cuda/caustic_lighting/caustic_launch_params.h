@@ -20,7 +20,8 @@ struct CausticLaunchParams
     // Scene
     OptixTraversableHandle handle;
 
-    // Materials
+    // Materials - needed for BRDF (Jensen's Eq. 8: f_r term)
+    Material* triangle_materials;
     Material sphere_materials[2];
 
     // Caustic photon map (linear array for fallback)
